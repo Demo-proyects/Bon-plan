@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script>tailwind.config={theme:{extend:{colors:{ink:'#12161c',pan:'#1b212a',acc:'#d4a94f'},fontFamily:{serif:['Newsreader','Georgia','serif'],sans:['"Atkinson Hyperlegible"','system-ui','sans-serif']}}}}</script>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<script type="importmap">{"imports":{"onnxruntime-web":"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.mjs"}}</script>
+<script type="importmap">{"imports":{"onnxruntime-web":"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.mjs","onnxruntime-web/wasm":"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.mjs"}}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
 <style>textarea:focus,button:focus-visible{outline:2px solid #d4a94f;outline-offset:1px}summary{list-style:none}summary::-webkit-details-marker{display:none}@keyframes sp{to{transform:rotate(360deg)}}.sp{animation:sp .9s linear infinite}</style>
 </head>
@@ -24,6 +24,8 @@
 <div id="sheet" class="fixed inset-0 z-30 bg-ink overflow-y-auto hidden"></div>
 
 <script type="module">
+import * as ort from 'onnxruntime-web';
+ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';ort.env.wasm.numThreads=1;
 const $=(s,e=document)=>e.querySelector(s), RATE=22050, NARR='Narrador';
 const HUES=['#d4a94f','#6fa8c9','#c97f9a','#7fae8c','#a58bd0','#d0906a','#6fc0b8','#b8b86a'];
 const ST='https://huggingface.co/Supertone/supertonic-3/resolve/3cadd1ee6394adea1bd021217a0e650ede09a323';
@@ -43,7 +45,8 @@ const PR={
   note:'Rápido y ligero. Cada voz habla un idioma y un acento. Solo calidad media y alta.',
   async init(){
     if(this.lib)return;
-    this.lib=await import('https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm');
+    this.lib=await import('https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/dist/piper-tts-web.js');
+    this.lib.TtsSession.WASM_LOCATIONS.onnxWasm='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
     const r=await this.lib.voices();
     this.all=(Array.isArray(r)?r:Object.values(r)).filter(v=>(v.num_speakers||1)<=1&&/medium|high/.test(v.quality))
       .map(v=>({id:v.key,name:cap(v.name),code:v.language.code,fam:v.language.family||v.language.code.slice(0,2),q:v.quality}));
@@ -153,8 +156,10 @@ Narración normal.
  gen:()=>{const c=parse(S.text).filter(s=>s.t).reduce((a,s)=>a+s.t.length,0),n=names().length-1;
   return `<div class="rounded-xl bg-pan border border-white/10 p-4"><div class="font-serif font-bold text-xl">${c.toLocaleString('es')} caracteres</div>
   <div class="text-sm text-zinc-400">1 narrador y ${n} personaje${n===1?'':'s'}. Todos los capítulos pegados salen en un solo MP3.</div></div>
-  <div class="grid grid-cols-3 gap-2 mt-3"><button data-a="go" ${S.busy?'disabled':''} class="col-span-2 h-12 rounded-lg bg-acc text-ink font-bold disabled:opacity-40">Generar MP3</button>
-  <button data-a="cancel" ${S.busy?'':'disabled'} class="h-12 rounded-lg border border-white/10 font-bold disabled:opacity-40">Cancelar</button></div>
+  <div class="grid grid-cols-2 gap-2 mt-3"><button data-a="listen" ${S.busy?'disabled':''} class="h-12 rounded-lg bg-acc text-ink font-bold disabled:opacity-40">Escuchar ahora</button>
+  <button data-a="go" ${S.busy?'disabled':''} class="h-12 rounded-lg border border-acc text-acc font-bold disabled:opacity-40">Solo generar MP3</button>
+  <button data-a="cancel" ${S.busy?'':'disabled'} class="col-span-2 h-11 rounded-lg border border-white/10 font-bold disabled:opacity-40">Detener</button></div>
+  <p class="text-xs text-zinc-500 mt-2">«Escuchar ahora» empieza a sonar en cuanto está lista la primera parte y el MP3 se arma al mismo tiempo para descargarlo después.</p>
   <div class="h-2.5 rounded-full bg-pan border border-white/10 mt-4 overflow-hidden"><i id="bar" class="block h-full bg-emerald-500" style="width:${S.pct}%"></i></div>
   <div id="out" class="mt-4">${S.out?`<audio controls src="${S.out}" class="w-full"></audio><a href="${S.out}" download="novela.mp3" class="mt-3 h-12 grid place-items-center rounded-lg bg-acc text-ink font-bold">Descargar MP3</a>`:''}</div>`}
 };
@@ -177,8 +182,9 @@ document.addEventListener('click',async e=>{
   else if(a==='close'){stopAudio();S.sheet=null;render()}
   else if(a==='use'){S.map[S.sheet]=b.dataset.k;LS.set('map',S.map);stopAudio();S.sheet=null;render()}
   else if(a==='clear'){S.text='';LS.set('text','');render()}
-  else if(a==='go')generate();
-  else if(a==='cancel')S.stop=true;
+  else if(a==='go')generate(false);
+  else if(a==='listen')generate(true);
+  else if(a==='cancel'){S.stop=true;halt()}
 });
 document.addEventListener('input',e=>{
   const t=e.target;
@@ -193,11 +199,14 @@ function pieces(text){
   for(const s of ss){if((cur+s).length>280&&cur){out.push(cur);cur=''}cur+=s}
   if(cur.trim())out.push(cur);return out;
 }
-async function generate(){
+let sched=[],nextT=0;
+const halt=()=>{sched.forEach(s=>{try{s.stop()}catch{}});sched=[]};
+async function generate(listen){
   const segs=parse(S.text),who=names();
   if(!segs.some(s=>s.t)){say('Pega primero el texto.',1);return}
   const miss=who.filter(w=>!S.map[w]);if(miss.length){say('Falta elegir voz para: '+miss.join(', '),1);return}
   S.busy=true;S.stop=false;S.out=null;S.pct=0;render();
+  if(listen){stopAudio();ac=ac||new AudioContext();ac.resume();halt();nextT=ac.currentTime+.3}
   let wl;try{wl=await navigator.wakeLock.request('screen')}catch{}
   try{
     const enc=new lamejs.Mp3Encoder(1,RATE,64),mp3=[];
@@ -206,11 +215,12 @@ async function generate(){
     const total=jobs.filter(j=>j.t).length;let n=0;
     for(const j of jobs){
       if(S.stop)throw new Error('Cancelado');
-      if(j.p){push(new Int16Array(Math.round(RATE*j.p/1000)));continue}
+      if(j.p){push(new Int16Array(Math.round(RATE*j.p/1000)));if(listen)nextT+=j.p/1000;continue}
       say(`Generando ${++n} de ${total} · ${j.w}`);S.pct=Math.round(n*100/total);const bar=$('#bar');if(bar)bar.style.width=S.pct+'%';
       const f=await synth(S.map[j.w],S.lang,j.t),o=new Int16Array(f.length);
       for(let i=0;i<f.length;i++){const v=Math.max(-1,Math.min(1,f[i]));o[i]=v<0?v*32768:v*32767}
       push(o);push(new Int16Array(Math.round(RATE*.18)));
+      if(listen){const b=ac.createBuffer(1,f.length,RATE);b.copyToChannel(f,0);const s=ac.createBufferSource();s.buffer=b;s.connect(ac.destination);const t=Math.max(nextT,ac.currentTime+.05);s.start(t);nextT=t+b.duration+.18;sched.push(s)}
     }
     const fin=enc.flush();if(fin.length)mp3.push(new Uint8Array(fin));
     S.out=URL.createObjectURL(new Blob(mp3,{type:'audio/mpeg'}));say('Listo. Descarga el archivo y escúchalo sin conexión.');
