@@ -2,219 +2,225 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Narrador de novelas</title>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,700;1,500&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#1b2028;--sf:#232a34;--ln:#374250;--tx:#e6e2d8;--mu:#9aa3ae;--ac:#c9a24a;--ok:#7fae8c;--er:#d0786a;color-scheme:dark}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 "Atkinson Hyperlegible",system-ui,sans-serif;padding:16px 16px 64px;max-width:640px;margin-inline:auto}
-h1{font:700 30px/1.1 Newsreader,Georgia,serif;margin:8px 0 4px}
-h2{font:700 20px/1.2 Newsreader,Georgia,serif;margin:28px 0 10px}
-p.sub{color:var(--mu);margin:0 0 18px}
-.seg{display:flex;border:1px solid var(--ln);border-radius:6px;overflow:hidden}
-.seg button{flex:1;padding:12px;background:none;border:0;color:var(--mu);font:inherit;font-weight:700}
-.seg button.on{background:var(--ac);color:#1b2028}
-textarea{width:100%;min-height:220px;background:var(--sf);color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:12px;font:15px/1.5 "Atkinson Hyperlegible",system-ui,sans-serif;resize:vertical}
-textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
-button.b,label.b{display:inline-block;background:var(--ac);color:#1b2028;border:0;border-radius:6px;padding:12px 16px;font:700 16px inherit;font-family:inherit;cursor:pointer;text-align:center}
-button.g,label.g{background:none;color:var(--tx);border:1px solid var(--ln)}
-button:disabled{opacity:.45}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
-.row>*{flex:1}
-details{border:1px solid var(--ln);border-radius:6px;padding:10px 12px;margin:10px 0;color:var(--mu)}
-summary{color:var(--tx);font-weight:700}
-code,pre{font:13px/1.5 ui-monospace,Menlo,monospace;color:var(--tx);white-space:pre-wrap}
-.trk{background:var(--sf);border:1px solid var(--ln);border-left:6px solid var(--c);border-radius:6px;padding:10px 12px;margin:8px 0}
-.trk b{font:700 18px Newsreader,Georgia,serif}
-.trk small{color:var(--mu);margin-left:6px}
-.trk .r{display:flex;gap:8px;margin-top:8px}
-select{flex:1;min-width:0;background:var(--bg);color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:10px;font:inherit}
-.pv{background:var(--sf);border:1px solid var(--ln);border-radius:6px;padding:8px 12px;max-height:200px;overflow:auto;font-size:14px}
-.pv span{border-left:4px solid var(--c);padding-left:6px;margin-right:4px}
-#bar{height:10px;background:var(--sf);border:1px solid var(--ln);border-radius:5px;overflow:hidden;margin:12px 0 6px}
-#bar i{display:block;height:100%;width:0;background:var(--ok)}
-#st{color:var(--mu);font-size:14px;min-height:21px}
-#st.er{color:var(--er)}
-audio{width:100%;margin:12px 0}
-</style>
-</head>
-<body>
-<h1>Narrador de novelas</h1>
-<p class="sub">Una voz cuenta la historia, otras voces dan vida a los personajes. Todo se genera en tu teléfono y sale en un solo MP3.</p>
-
-<div class="seg" id="lang"><button data-l="es" class="on">Español</button><button data-l="fr">Français</button></div>
-
-<h2>1. Texto</h2>
-<textarea id="txt" placeholder="Pega aquí los capítulos ya marcados, varios a la vez."></textarea>
-<div class="row">
-  <label class="b g">Cargar .txt<input type="file" id="file" accept=".txt,text/plain" hidden></label>
-  <button class="b g" id="clr">Borrar</button>
-</div>
-<details><summary>Formato del texto</summary>
-<pre>## Capítulo 12: El puente
-Narración normal, la lee la voz principal.
-[Luna: Ven conmigo, no hay tiempo.] dijo ella.
-@voz Luna = es_MX-claude-high
-@voz Narrador = es_ES-davefx-medium</pre>
-Todo lo que está entre corchetes con "Nombre:" lo dice ese personaje. Lo demás lo lee el narrador. Las líneas @voz son opcionales y asignan voces solas.</details>
-
-<h2>2. Voces</h2>
-<div id="vc"></div>
-<div id="pvw" class="pv" hidden></div>
-
-<h2>3. Audio</h2>
-<div class="row"><button class="b" id="go">Generar MP3</button><button class="b g" id="stop" disabled>Cancelar</button></div>
-<div id="bar"><i></i></div>
-<div id="st"></div>
-<div id="out"></div>
-
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Narrador</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>tailwind.config={theme:{extend:{colors:{ink:'#12161c',pan:'#1b212a',acc:'#d4a94f'},fontFamily:{serif:['Newsreader','Georgia','serif'],sans:['"Atkinson Hyperlegible"','system-ui','sans-serif']}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script type="importmap">{"imports":{"onnxruntime-web":"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.mjs"}}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
-<script>
-const $=s=>document.querySelector(s);
-const NARR='Narrador', RATE=22050;
-const HUES=['#c9a24a','#6fa8c9','#c97f9a','#7fae8c','#a58bd0','#d0906a','#6fc0b8','#b8b86a'];
-const SAMPLE={es:'Hola, esta es mi voz para la novela.',fr:'Bonjour, voici ma voix pour le roman.'};
-const S={lang:'es',tts:null,voices:[],map:{},who:[],stop:false};
-try{Object.assign(S.map,JSON.parse(localStorage.getItem('nv-map')||'{}'))}catch(e){}
-const save=()=>{try{localStorage.setItem('nv-map',JSON.stringify(S.map))}catch(e){}};
-const say=(m,e)=>{const s=$('#st');s.textContent=m;s.className=e?'er':''};
-const prog=p=>$('#bar i').style.width=Math.round(p*100)+'%';
+<style>textarea:focus,button:focus-visible{outline:2px solid #d4a94f;outline-offset:1px}summary{list-style:none}summary::-webkit-details-marker{display:none}@keyframes sp{to{transform:rotate(360deg)}}.sp{animation:sp .9s linear infinite}</style>
+</head>
+<body class="bg-ink text-zinc-100 font-sans antialiased">
+<header class="sticky top-0 z-20 bg-ink border-b border-white/10" style="padding-top:env(safe-area-inset-top)">
+  <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+    <h1 class="font-serif font-bold text-2xl tracking-tight">Narrador</h1>
+    <div id="lang" class="flex rounded-lg border border-white/10 overflow-hidden text-sm font-bold"></div>
+  </div>
+  <div id="st" class="max-w-xl mx-auto px-4 pb-2 text-sm text-zinc-400 min-h-[1.5rem] truncate"></div>
+</header>
+<main id="view" class="max-w-xl mx-auto px-4 pt-4 pb-28"></main>
+<nav id="nav" class="fixed bottom-0 inset-x-0 z-20 bg-ink border-t border-white/10 grid grid-cols-3" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
+<div id="sheet" class="fixed inset-0 z-30 bg-ink overflow-y-auto hidden"></div>
 
-async function lib(){
-  if(S.tts)return S.tts;
-  say('Cargando motor de voz…');
-  try{S.tts=await import('https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/+esm')}
-  catch(e){say('No se pudo cargar el motor de voz. Revisa tu conexión y que abras este archivo desde un https.',1);throw e}
-  const r=await S.tts.voices();
-  S.voices=(Array.isArray(r)?r:Object.values(r)).map(v=>({id:v.key,name:v.name,code:v.language.code,fam:v.language.family||v.language.code.slice(0,2),q:v.quality,n:v.num_speakers||1,spk:v.speaker_id_map||{}}));
-  return S.tts;
+<script type="module">
+const $=(s,e=document)=>e.querySelector(s), RATE=22050, NARR='Narrador';
+const HUES=['#d4a94f','#6fa8c9','#c97f9a','#7fae8c','#a58bd0','#d0906a','#6fc0b8','#b8b86a'];
+const ST='https://huggingface.co/Supertone/supertonic-3/resolve/3cadd1ee6394adea1bd021217a0e650ede09a323';
+const HELPER='https://cdn.jsdelivr.net/gh/supertone-inc/supertonic@1e9799e964ea4c0dad7cde993b65c3c813a7b373/web/helper.js';
+const BASE={es:'Era una noche tranquila cuando ella cruzó el puente. «No tengas miedo», susurró, «yo estaré contigo».',fr:'La nuit était calme quand elle traversa le pont. « N’aie pas peur », murmura-t-elle, « je serai avec toi ».'};
+const LS={get(k,d){try{return JSON.parse(localStorage.getItem('nv2-'+k))??d}catch{return d}},set(k,v){try{localStorage.setItem('nv2-'+k,JSON.stringify(v))}catch{}}};
+const S={lang:LS.get('lang','es'),tab:'text',map:LS.get('map',{}),text:LS.get('text',''),base:LS.get('base',{...BASE}),sheet:null,playing:null,load:null,busy:false,stop:false,out:null,pct:0};
+const LBL={},cache=new Map();
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1).replace(/_/g,' ');
+const say=(m,e)=>{const s=$('#st');s.textContent=m;s.className=s.className.replace(/text-(red-400|zinc-400)/g,'')+(e?' text-red-400':' text-zinc-400')};
+let lock=Promise.resolve();const queue=f=>(lock=lock.then(f,f));
+
+/* ---------- proveedores ---------- */
+const PR={
+ piper:{name:'Piper',by:'Rhasspy · Open Home Foundation',lic:'MIT',size:'15–60 MB por voz',
+  note:'Rápido y ligero. Cada voz habla un idioma y un acento. Solo calidad media y alta.',
+  async init(){
+    if(this.lib)return;
+    this.lib=await import('https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm');
+    const r=await this.lib.voices();
+    this.all=(Array.isArray(r)?r:Object.values(r)).filter(v=>(v.num_speakers||1)<=1&&/medium|high/.test(v.quality))
+      .map(v=>({id:v.key,name:cap(v.name),code:v.language.code,fam:v.language.family||v.language.code.slice(0,2),q:v.quality}));
+  },
+  list(l){return (this.all||[]).filter(v=>v.fam===l).sort((a,b)=>(b.q==='high')-(a.q==='high')||a.code.localeCompare(b.code)||a.name.localeCompare(b.name))
+    .map(v=>({key:'piper:'+v.id,name:v.name,sub:v.code.replace('_',' · ')+' · calidad '+(v.q==='high'?'alta':'media'),langs:[l.toUpperCase()]}))},
+  async synth(id,l,text){
+    await this.init();const t=this.lib;
+    if(!(await t.stored().catch(()=>[])).includes(id))await t.download(id,p=>p.total&&say(`Descargando voz… ${Math.round(p.loaded*100/p.total)}%`));
+    const b=await t.predict({text,voiceId:id}),c=new AudioContext(),a=await c.decodeAudioData(await b.arrayBuffer());c.close();
+    return{data:a.getChannelData(0),rate:a.sampleRate};
+  }},
+ supertonic:{name:'Supertonic 3',by:'Supertone',lic:'OpenRAIL-M',size:'≈ 380 MB, una sola vez',
+  note:'Más natural. Cada voz habla español, francés y 29 idiomas más con la misma identidad.',
+  async init(){
+    if(this.tts)return;say('Cargando Supertonic (la primera vez descarga ≈ 380 MB)…');
+    this.H=await import(HELPER);
+    const r=await this.H.loadTextToSpeech(ST+'/onnx',{executionProviders:['wasm']},(n,i,t)=>say(`Supertonic: ${n} (${i}/${t})`));
+    this.tts=r.textToSpeech;this.sty={};
+  },
+  list(l){return ['F','M'].flatMap(g=>[1,2,3,4,5].map(n=>({key:'supertonic:'+g+n,name:(g==='F'?'Mujer ':'Hombre ')+n,sub:'Voz '+g+n+' · multilingüe',langs:['ES','FR','+29']})))},
+  async synth(id,l,text){
+    await this.init();
+    const s=this.sty[id]||(this.sty[id]=await this.H.loadVoiceStyle([`${ST}/voice_styles/${id}.json`]));
+    const{wav}=await this.tts.call(text,l,s,8,1.05,0.15);
+    return{data:Float32Array.from(wav),rate:this.tts.sampleRate};
+  }}
+};
+const ORDER=['piper','supertonic'];
+const groups=()=>ORDER.map(id=>({id,p:PR[id],v:PR[id].list(S.lang)})).map(g=>(g.v.forEach(v=>LBL[v.key]=g.p.name+' · '+v.name),g));
+
+async function resample(d,rate){
+  if(rate===RATE)return d;
+  const b=new AudioBuffer({length:d.length,sampleRate:rate,numberOfChannels:1});b.copyToChannel(d,0);
+  const o=new OfflineAudioContext(1,Math.max(1,Math.ceil(d.length*RATE/rate)),RATE),s=o.createBufferSource();
+  s.buffer=b;s.connect(o.destination);s.start();return (await o.startRendering()).getChannelData(0);
+}
+function synth(key,l,text){
+  const ck=key+l+text;if(cache.has(ck))return Promise.resolve(cache.get(ck));
+  const[pid,vid]=[key.slice(0,key.indexOf(':')),key.slice(key.indexOf(':')+1)];
+  return queue(async()=>{const r=await PR[pid].synth(vid,l,text),f=await resample(r.data,r.rate);if(text.length<200)cache.set(ck,f);return f});
 }
 
-/* ---------- texto ---------- */
+/* ---------- audio de prueba ---------- */
+let ac,node;
+const stopAudio=()=>{try{node&&(node.onended=null,node.stop())}catch{}node=null;S.playing=S.load=null;mark()};
+async function play(key){
+  if(S.playing===key){stopAudio();return}
+  stopAudio();S.playing=S.load=key;mark();ac=ac||new AudioContext();ac.resume();
+  try{
+    const f=await synth(key,S.lang,S.base[S.lang]);if(S.playing!==key)return;
+    S.load=null;mark();say('');
+    const b=ac.createBuffer(1,f.length,RATE);b.copyToChannel(f,0);
+    node=ac.createBufferSource();node.buffer=b;node.connect(ac.destination);
+    node.onended=()=>{S.playing=null;mark()};node.start();
+  }catch(e){S.playing=S.load=null;mark();say('No se pudo reproducir: '+e.message,1)}
+}
+const ico=k=>S.load===k?'<svg class="sp" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>':S.playing===k?'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>':'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const mark=()=>document.querySelectorAll('[data-a=play]').forEach(b=>{b.innerHTML=ico(b.dataset.k);b.className=b.className.replace(/bg-\S+ text-\S+/,(S.playing===b.dataset.k)?'bg-acc text-ink':'bg-white/10 text-zinc-100')});
+
+/* ---------- vistas ---------- */
+const row=(v,pick)=>`<div class="flex items-center gap-3 py-3 border-b border-white/5 last:border-0">
+ <button data-a="play" data-k="${v.key}" aria-label="Probar ${esc(v.name)}" class="shrink-0 w-12 h-12 rounded-full grid place-items-center bg-white/10 text-zinc-100">${ico(v.key)}</button>
+ <div class="flex-1 min-w-0"><div class="font-bold truncate">${esc(v.name)}</div><div class="text-xs text-zinc-400 truncate">${esc(v.sub)}</div>
+ <div class="mt-1 flex gap-1">${v.langs.map(x=>`<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-zinc-300">${x}</span>`).join('')}</div></div>
+ ${pick?`<button data-a="use" data-k="${v.key}" class="shrink-0 px-4 h-10 rounded-lg bg-acc text-ink font-bold text-sm">Usar</button>`:''}</div>`;
+function vlist(pick){
+  return `<label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Texto de prueba (${S.lang==='es'?'español':'français'})</label>
+  <textarea class="basein w-full h-24 rounded-xl bg-pan border border-white/10 p-3 text-[15px] resize-none">${esc(S.base[S.lang])}</textarea>
+  <p class="text-xs text-zinc-500 mt-1 mb-4">Toca ▶ en cualquier voz para oírla leer este texto.</p>`+
+  groups().map(g=>`<details open class="mb-4 rounded-xl border border-white/10 bg-pan overflow-hidden">
+   <summary class="p-4 cursor-pointer flex items-start justify-between gap-3"><div><div class="font-serif font-bold text-xl">${g.p.name}</div>
+   <div class="text-xs text-zinc-400">${g.p.by} · ${g.p.lic} · ${g.p.size}</div><div class="text-sm text-zinc-300 mt-1">${g.p.note}</div></div>
+   <span class="text-xs font-bold text-acc shrink-0 mt-1">${g.v.length} voces</span></summary>
+   <div class="px-4 border-t border-white/10">${g.v.length?g.v.map(v=>row(v,pick)).join(''):'<p class="py-4 text-sm text-zinc-400">Cargando lista…</p>'}</div></details>`).join('');
+}
 function parse(raw){
-  const segs=[];
+  const segs=[],re=/\[([^\[\]:]{1,40}):\s*([^\[\]]+)\]/g;
   for(const line of raw.split(/\r?\n/)){
-    const t=line.trim();
-    const m=t.match(/^@voz\s+(.+?)\s*=\s*(\S+)/i);
-    if(m){S.map[norm(m[1])]=m[2];continue}
-    if(!t)continue;
+    const t=line.trim();if(!t||/^@voz/i.test(t))continue;
     if(/^##\s+/.test(t)){segs.push({w:NARR,t:t.replace(/^##\s+/,'').replace(/[.:!?]*$/,'.')},{p:1300});continue}
-    let last=0,re=/\[([^\[\]:]{1,40}):\s*([^\[\]]+)\]/g,x;
-    while((x=re.exec(t))){
-      const a=t.slice(last,x.index).trim();if(a)segs.push({w:NARR,t:a});
-      segs.push({w:norm(x[1]),t:x[2].trim()});last=re.lastIndex;
-    }
-    const b=t.slice(last).trim();if(b)segs.push({w:NARR,t:b});
-    segs.push({p:450});
+    let last=0,x;re.lastIndex=0;
+    while((x=re.exec(t))){const a=t.slice(last,x.index).trim();if(a)segs.push({w:NARR,t:a});segs.push({w:nm(x[1]),t:x[2].trim()});last=re.lastIndex}
+    const b=t.slice(last).trim();if(b)segs.push({w:NARR,t:b});segs.push({p:450});
   }
   return segs;
 }
-const norm=n=>/^narrad(or|eur)$/i.test(n.trim())?NARR:n.trim();
+const nm=n=>/^narrad(or|eur)$/i.test(n.trim())?NARR:n.trim();
+const names=()=>[NARR,...new Set(parse(S.text).filter(s=>s.w&&s.w!==NARR).map(s=>s.w))];
+function directives(){for(const l of S.text.split(/\r?\n/)){const m=l.trim().match(/^@voz\s+(.+?)\s*=\s*(\S+)/i);if(m)S.map[nm(m[1])]=m[2].includes(':')?m[2]:'piper:'+m[2]}LS.set('map',S.map)}
+const castHtml=()=>names().map((w,i)=>{const k=S.map[w];return `<div class="flex rounded-xl bg-pan border border-white/10 overflow-hidden"><i class="w-1.5 shrink-0" style="background:${HUES[i%8]}"></i>
+ <div class="flex-1 min-w-0 p-3"><div class="font-serif font-bold text-lg">${esc(w)}${w===NARR?' <span class="text-xs font-sans font-normal text-zinc-400">cuenta todo lo demás</span>':''}</div>
+ <div class="text-sm truncate ${k?'text-zinc-300':'text-acc'}">${k?esc(LBL[k]||k.split(':')[1]):'Sin voz asignada'}</div></div>
+ <button data-a="pick" data-w="${esc(w)}" class="px-4 font-bold text-acc">${k?'Cambiar':'Elegir'}</button></div>`}).join('<div class="h-2"></div>');
+const view={
+ text:()=>`<textarea id="txt" class="w-full h-64 rounded-xl bg-pan border border-white/10 p-3 text-[15px] resize-y" placeholder="Pega aquí los capítulos ya marcados, varios a la vez.">${esc(S.text)}</textarea>
+  <div class="grid grid-cols-2 gap-2 mt-2"><label class="h-11 grid place-items-center rounded-lg border border-white/10 font-bold cursor-pointer">Cargar .txt<input id="file" type="file" accept=".txt,text/plain" hidden></label>
+  <button data-a="clear" class="h-11 rounded-lg border border-white/10 font-bold">Borrar</button></div>
+  <details class="mt-3 rounded-xl border border-white/10 p-3 text-sm text-zinc-400"><summary class="font-bold text-zinc-100 cursor-pointer">Formato del texto</summary>
+  <pre class="mt-2 whitespace-pre-wrap text-xs text-zinc-300">## Capítulo 12: El puente
+Narración normal.
+[Luna: Ven conmigo.] dijo ella.
+@voz Luna = supertonic:F2
+@voz Narrador = piper:es_ES-davefx-medium</pre></details>
+  <h2 class="font-serif font-bold text-xl mt-6 mb-2">Reparto</h2><div id="cast">${castHtml()}</div>`,
+ voices:()=>vlist(false),
+ gen:()=>{const c=parse(S.text).filter(s=>s.t).reduce((a,s)=>a+s.t.length,0),n=names().length-1;
+  return `<div class="rounded-xl bg-pan border border-white/10 p-4"><div class="font-serif font-bold text-xl">${c.toLocaleString('es')} caracteres</div>
+  <div class="text-sm text-zinc-400">1 narrador y ${n} personaje${n===1?'':'s'}. Todos los capítulos pegados salen en un solo MP3.</div></div>
+  <div class="grid grid-cols-3 gap-2 mt-3"><button data-a="go" ${S.busy?'disabled':''} class="col-span-2 h-12 rounded-lg bg-acc text-ink font-bold disabled:opacity-40">Generar MP3</button>
+  <button data-a="cancel" ${S.busy?'':'disabled'} class="h-12 rounded-lg border border-white/10 font-bold disabled:opacity-40">Cancelar</button></div>
+  <div class="h-2.5 rounded-full bg-pan border border-white/10 mt-4 overflow-hidden"><i id="bar" class="block h-full bg-emerald-500" style="width:${S.pct}%"></i></div>
+  <div id="out" class="mt-4">${S.out?`<audio controls src="${S.out}" class="w-full"></audio><a href="${S.out}" download="novela.mp3" class="mt-3 h-12 grid place-items-center rounded-lg bg-acc text-ink font-bold">Descargar MP3</a>`:''}</div>`}
+};
+const TABS=[['text','Texto','M5 4h14v2H5zm0 5h14v2H5zm0 5h9v2H5z'],['voices','Voces','M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zm-6 9a6 6 0 0 0 12 0h-2a4 4 0 0 1-8 0zm5 7v2h2v-2z'],['gen','Audio','M12 3v12m0 0l-4-4m4 4l4-4M5 19h14']];
+function render(){
+  $('#lang').innerHTML=['es','fr'].map(l=>`<button data-a="lang" data-l="${l}" class="px-4 py-2 ${S.lang===l?'bg-acc text-ink':'text-zinc-300'}">${l==='es'?'Español':'Français'}</button>`).join('');
+  $('#nav').innerHTML=TABS.map(([id,t,d])=>`<button data-a="tab" data-t="${id}" class="py-3 flex flex-col items-center gap-1 text-xs font-bold ${S.tab===id?'text-acc':'text-zinc-400'}"><svg width="22" height="22" viewBox="0 0 24 24" fill="${id==='gen'?'none':'currentColor'}" stroke="${id==='gen'?'currentColor':'none'}" stroke-width="2"><path d="${d}"/></svg>${t}</button>`).join('');
+  $('#view').innerHTML=view[S.tab]();
+  const sh=$('#sheet');sh.classList.toggle('hidden',!S.sheet);
+  if(S.sheet)sh.innerHTML=`<div class="sticky top-0 bg-ink border-b border-white/10 px-4 py-3 flex items-center justify-between" style="padding-top:calc(env(safe-area-inset-top) + .75rem)"><div class="font-serif font-bold text-xl">Voz para ${esc(S.sheet)}</div><button data-a="close" class="font-bold text-acc">Cerrar</button></div><div class="max-w-xl mx-auto p-4">${vlist(true)}</div>`;
+}
 
+/* ---------- eventos ---------- */
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;
+  if(a==='play')play(b.dataset.k);
+  else if(a==='tab'){stopAudio();S.tab=b.dataset.t;render();scrollTo(0,0)}
+  else if(a==='lang'){stopAudio();S.lang=b.dataset.l;LS.set('lang',S.lang);render()}
+  else if(a==='pick'){S.sheet=b.dataset.w;render()}
+  else if(a==='close'){stopAudio();S.sheet=null;render()}
+  else if(a==='use'){S.map[S.sheet]=b.dataset.k;LS.set('map',S.map);stopAudio();S.sheet=null;render()}
+  else if(a==='clear'){S.text='';LS.set('text','');render()}
+  else if(a==='go')generate();
+  else if(a==='cancel')S.stop=true;
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.id==='txt'){S.text=t.value;LS.set('text',S.text);directives();$('#cast').innerHTML=castHtml()}
+  else if(t.classList.contains('basein')){S.base[S.lang]=t.value;LS.set('base',S.base)}
+});
+document.addEventListener('change',async e=>{if(e.target.id==='file'){const f=e.target.files[0];if(f){S.text=await f.text();LS.set('text',S.text);directives();render()}}});
+
+/* ---------- generar MP3 ---------- */
 function pieces(text){
   const ss=text.match(/[^.!?…]+[.!?…]+["»”)]*\s*|[^.!?…]+$/g)||[text],out=[];let cur='';
   for(const s of ss){if((cur+s).length>280&&cur){out.push(cur);cur=''}cur+=s}
   if(cur.trim())out.push(cur);return out;
 }
-
-/* ---------- interfaz de voces ---------- */
-function opts(sel,cur){
-  sel.innerHTML='<option value="">Elegir voz…</option>';
-  const list=S.voices.filter(v=>v.fam===S.lang),by={};
-  list.forEach(v=>(by[v.code]=by[v.code]||[]).push(v));
-  Object.keys(by).sort().forEach(c=>{
-    const g=document.createElement('optgroup');g.label=(S.lang==='es'?'Español ':'Français ')+c.split('_')[1];
-    by[c].forEach(v=>{
-      if(v.n>1){Object.entries(v.spk).slice(0,20).forEach(([k,i])=>g.append(new Option(`${v.name} ${k} (${v.q})`,`${v.id}#${i}`)))}
-      else g.append(new Option(`${v.name} (${v.q})`,v.id));
-    });
-    sel.append(g);
-  });
-  sel.value=cur||'';
-}
-async function draw(){
-  const raw=$('#txt').value,segs=parse(raw);
-  S.who=[NARR,...[...new Set(segs.filter(s=>s.w&&s.w!==NARR).map(s=>s.w))]];
-  const box=$('#vc');box.innerHTML='';
-  try{await lib()}catch(e){return}
-  S.who.forEach((w,i)=>{
-    const d=document.createElement('div');d.className='trk';d.style.setProperty('--c',HUES[i%HUES.length]);
-    d.innerHTML=`<b>${w}</b><small>${w===NARR?'cuenta todo lo demás':'personaje'}</small><div class="r"><select></select><button class="b g">Probar</button></div>`;
-    const sel=d.querySelector('select');opts(sel,S.map[w]);
-    sel.onchange=()=>{S.map[w]=sel.value;save()};
-    d.querySelector('button').onclick=()=>test(w);
-    box.append(d);
-  });
-  const pv=$('#pvw');pv.hidden=!segs.length;
-  pv.innerHTML=segs.filter(s=>s.t).slice(0,40).map(s=>`<span style="--c:${HUES[Math.max(0,S.who.indexOf(s.w))%HUES.length]}">${s.t.replace(/</g,'&lt;')}</span>`).join(' ');
-  say(S.who.length>1?`${S.who.length-1} personaje(s) detectado(s).`:'');
-}
-let tm;$('#txt').oninput=()=>{clearTimeout(tm);tm=setTimeout(draw,500)};
-$('#file').onchange=async e=>{const f=e.target.files[0];if(f){$('#txt').value=await f.text();draw()}};
-$('#clr').onclick=()=>{$('#txt').value='';draw()};
-document.querySelectorAll('#lang button').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('#lang button').forEach(x=>x.classList.toggle('on',x===b));
-  S.lang=b.dataset.l;document.documentElement.lang=S.lang;draw();
-});
-
-/* ---------- síntesis ---------- */
-async function model(key,label){
-  const id=key.split('#')[0],t=S.tts;
-  const have=await t.stored().catch(()=>[]);
-  if(have.includes(id))return;
-  await t.download(id,p=>{if(p.total){say(`Descargando voz ${label}: ${Math.round(p.loaded*100/p.total)}%`)}});
-}
-async function synth(key,text){
-  const [id,spk]=key.split('#');
-  const cfg={text,voiceId:id};if(spk!==undefined)cfg.speakerId=+spk;
-  const blob=await S.tts.predict(cfg);
-  const ctx=new (window.AudioContext||window.webkitAudioContext)();
-  const buf=await ctx.decodeAudioData(await blob.arrayBuffer());ctx.close();
-  const off=new OfflineAudioContext(1,Math.max(1,Math.ceil(buf.duration*RATE)),RATE);
-  const src=off.createBufferSource();src.buffer=buf;src.connect(off.destination);src.start();
-  const f=(await off.startRendering()).getChannelData(0),o=new Int16Array(f.length);
-  for(let i=0;i<f.length;i++){const v=Math.max(-1,Math.min(1,f[i]));o[i]=v<0?v*32768:v*32767}
-  return o;
-}
-async function test(w){
-  const k=S.map[w];if(!k){say('Elige primero una voz.',1);return}
-  try{await lib();await model(k,w);say('Probando…');
-    const s=await synth(k,SAMPLE[S.lang]),c=new AudioContext(),b=c.createBuffer(1,s.length,RATE),d=b.getChannelData(0);
-    for(let i=0;i<s.length;i++)d[i]=s[i]/32768;
-    const n=c.createBufferSource();n.buffer=b;n.connect(c.destination);n.start();say('');
-  }catch(e){say('No se pudo probar esta voz: '+e.message,1)}
-}
 async function generate(){
-  const segs=parse($('#txt').value);S.who=[NARR,...[...new Set(segs.filter(s=>s.w&&s.w!==NARR).map(s=>s.w))]];
+  const segs=parse(S.text),who=names();
   if(!segs.some(s=>s.t)){say('Pega primero el texto.',1);return}
-  const miss=S.who.filter(w=>!S.map[w]);
-  if(miss.length){say('Falta elegir voz para: '+miss.join(', '),1);return}
-  S.stop=false;$('#go').disabled=true;$('#stop').disabled=false;$('#out').innerHTML='';prog(0);
-  let wl;try{wl=await navigator.wakeLock.request('screen')}catch(e){}
+  const miss=who.filter(w=>!S.map[w]);if(miss.length){say('Falta elegir voz para: '+miss.join(', '),1);return}
+  S.busy=true;S.stop=false;S.out=null;S.pct=0;render();
+  let wl;try{wl=await navigator.wakeLock.request('screen')}catch{}
   try{
-    await lib();
-    for(const w of S.who)await model(S.map[w],w);
     const enc=new lamejs.Mp3Encoder(1,RATE,64),mp3=[];
-    const push=pcm=>{for(let i=0;i<pcm.length;i+=1152){const r=enc.encodeBuffer(pcm.subarray(i,i+1152));if(r.length)mp3.push(new Uint8Array(r))}};
-    const jobs=[];segs.forEach(s=>{if(s.p)jobs.push({p:s.p});else pieces(s.t).forEach(t=>jobs.push({w:s.w,t}))});
+    const push=p=>{for(let i=0;i<p.length;i+=1152){const r=enc.encodeBuffer(p.subarray(i,i+1152));if(r.length)mp3.push(new Uint8Array(r))}};
+    const jobs=[];segs.forEach(s=>s.p?jobs.push({p:s.p}):pieces(s.t).forEach(t=>jobs.push({w:s.w,t})));
     const total=jobs.filter(j=>j.t).length;let n=0;
     for(const j of jobs){
       if(S.stop)throw new Error('Cancelado');
       if(j.p){push(new Int16Array(Math.round(RATE*j.p/1000)));continue}
-      say(`Generando ${++n} de ${total}… (${j.w})`);prog(n/total);
-      push(await synth(S.map[j.w],j.t));
-      push(new Int16Array(Math.round(RATE*.18)));
+      say(`Generando ${++n} de ${total} · ${j.w}`);S.pct=Math.round(n*100/total);const bar=$('#bar');if(bar)bar.style.width=S.pct+'%';
+      const f=await synth(S.map[j.w],S.lang,j.t),o=new Int16Array(f.length);
+      for(let i=0;i<f.length;i++){const v=Math.max(-1,Math.min(1,f[i]));o[i]=v<0?v*32768:v*32767}
+      push(o);push(new Int16Array(Math.round(RATE*.18)));
     }
     const fin=enc.flush();if(fin.length)mp3.push(new Uint8Array(fin));
-    const url=URL.createObjectURL(new Blob(mp3,{type:'audio/mpeg'}));
-    $('#out').innerHTML=`<audio controls src="${url}"></audio><a class="b" style="display:block;text-decoration:none" href="${url}" download="novela.mp3">Descargar MP3</a>`;
-    prog(1);say('Listo. Descarga el archivo y escúchalo sin conexión.');
+    S.out=URL.createObjectURL(new Blob(mp3,{type:'audio/mpeg'}));say('Listo. Descarga el archivo y escúchalo sin conexión.');
   }catch(e){say(e.message==='Cancelado'?'Cancelado.':'Error: '+e.message,1)}
-  finally{$('#go').disabled=false;$('#stop').disabled=true;if(wl)wl.release().catch(()=>{})}
+  finally{S.busy=false;render();if(wl)wl.release().catch(()=>{})}
 }
-$('#go').onclick=generate;$('#stop').onclick=()=>{S.stop=true};
-draw();
+
+render();
+directives();
+PR.piper.init().then(()=>{S.tab!=='gen'&&render()}).catch(e=>say('No se pudo cargar la lista de Piper: '+e.message,1));
 </script>
 </body>
 </html>
