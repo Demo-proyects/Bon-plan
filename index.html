@@ -33,10 +33,12 @@ const HELPER='https://cdn.jsdelivr.net/gh/supertone-inc/supertonic@1e9799e964ea4
 const BASE={es:'Era una noche tranquila cuando ella cruzó el puente. «No tengas miedo», susurró, «yo estaré contigo».',fr:'La nuit était calme quand elle traversa le pont. « N’aie pas peur », murmura-t-elle, « je serai avec toi ».'};
 const LS={get(k,d){try{return JSON.parse(localStorage.getItem('nv2-'+k))??d}catch{return d}},set(k,v){try{localStorage.setItem('nv2-'+k,JSON.stringify(v))}catch{}}};
 const S={lang:LS.get('lang','es'),tab:'text',map:LS.get('map',{}),text:LS.get('text',''),base:LS.get('base',{...BASE}),sheet:null,playing:null,load:null,busy:false,stop:false,out:null,pct:0};
+const _f=window.fetch.bind(window);
+window.fetch=async(u,o)=>{const url=typeof u==='string'?u:u.url;if(window.caches&&/huggingface\.co\/Supertone\//.test(url)){try{const c=await caches.open('nv-st');let r=await c.match(url);if(r)return r;r=await _f(u,o);if(r.ok)await c.put(url,r.clone());return r}catch{}}return _f(u,o)};
 const LBL={},cache=new Map();
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cap=s=>s.charAt(0).toUpperCase()+s.slice(1).replace(/_/g,' ');
-const say=(m,e)=>{const s=$('#st');s.textContent=m;s.className=s.className.replace(/text-(red-400|zinc-400)/g,'')+(e?' text-red-400':' text-zinc-400')};
+const say=(m,e)=>{const d=$('#dltxt');if(d&&S.dl)d.textContent=m;const s=$('#st');s.textContent=m;s.className=s.className.replace(/text-(red-400|zinc-400)/g,'')+(e?' text-red-400':' text-zinc-400')};
 let lock=Promise.resolve();const queue=f=>(lock=lock.then(f,f));
 
 /* ---------- proveedores ---------- */
@@ -48,14 +50,14 @@ const PR={
     this.lib=await import('https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/dist/piper-tts-web.js');
     this.lib.TtsSession.WASM_LOCATIONS.onnxWasm='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
     const r=await this.lib.voices();
-    this.all=(Array.isArray(r)?r:Object.values(r)).filter(v=>(v.num_speakers||1)<=1&&/medium|high/.test(v.quality))
-      .map(v=>({id:v.key,name:cap(v.name),code:v.language.code,fam:v.language.family||v.language.code.slice(0,2),q:v.quality}));
+    this.all=(Array.isArray(r)?r:Object.values(r)).map(v=>({id:v.key,name:cap(v.name),code:v.language.code,fam:v.language.family||v.language.code.slice(0,2),q:v.quality,multi:(v.num_speakers||1)>1,mb:Math.round(Object.entries(v.files||{}).filter(([k])=>k.endsWith('.onnx')).reduce((a,[,f])=>a+f.size_bytes,0)/1e6)}));
   },
-  list(l){return (this.all||[]).filter(v=>v.fam===l).sort((a,b)=>(b.q==='high')-(a.q==='high')||a.code.localeCompare(b.code)||a.name.localeCompare(b.name))
-    .map(v=>({key:'piper:'+v.id,name:v.name,sub:v.code.replace('_',' · ')+' · calidad '+(v.q==='high'?'alta':'media'),langs:[l.toUpperCase()]}))},
+  list(l){const QR={high:3,medium:2,low:1,x_low:0},QL={high:'alta',medium:'media',low:'baja',x_low:'muy baja'};
+    return (this.all||[]).filter(v=>v.fam===l&&(l==='es'||(!v.multi&&QR[v.q]>=2))).sort((a,b)=>QR[b.q]-QR[a.q]||a.code.localeCompare(b.code)||a.name.localeCompare(b.name))
+    .map(v=>({key:'piper:'+v.id,name:v.name+(v.multi?' (voz 1)':''),mb:v.mb,sub:v.code.replace('_',' · ')+' · calidad '+QL[v.q]+' · '+v.mb+' MB',langs:[l.toUpperCase()]}))},
+  async ensure(id){await this.init();const t=this.lib;if(!(await t.stored().catch(()=>[])).includes(id))await t.download(id,p=>p.total&&say(`Descargando voz… ${Math.round(p.loaded*100/p.total)}%`))},
   async synth(id,l,text){
-    await this.init();const t=this.lib;
-    if(!(await t.stored().catch(()=>[])).includes(id))await t.download(id,p=>p.total&&say(`Descargando voz… ${Math.round(p.loaded*100/p.total)}%`));
+    await this.ensure(id);const t=this.lib;
     const b=await t.predict({text,voiceId:id}),c=new AudioContext(),a=await c.decodeAudioData(await b.arrayBuffer());c.close();
     return{data:a.getChannelData(0),rate:a.sampleRate};
   }},
@@ -68,9 +70,9 @@ const PR={
     this.tts=r.textToSpeech;this.sty={};
   },
   list(l){return ['F','M'].flatMap(g=>[1,2,3,4,5].map(n=>({key:'supertonic:'+g+n,name:(g==='F'?'Mujer ':'Hombre ')+n,sub:'Voz '+g+n+' · multilingüe',langs:['ES','FR','+29']})))},
+  async style(id){await this.init();return this.sty[id]||(this.sty[id]=await this.H.loadVoiceStyle([`${ST}/voice_styles/${id}.json`]))},
   async synth(id,l,text){
-    await this.init();
-    const s=this.sty[id]||(this.sty[id]=await this.H.loadVoiceStyle([`${ST}/voice_styles/${id}.json`]));
+    const s=await this.style(id);
     const{wav}=await this.tts.call(text,l,s,8,1.05,0.15);
     return{data:Float32Array.from(wav),rate:this.tts.sampleRate};
   }}
@@ -108,13 +110,14 @@ const ico=k=>S.load===k?'<svg class="sp" width="22" height="22" viewBox="0 0 24 
 const mark=()=>document.querySelectorAll('[data-a=play]').forEach(b=>{b.innerHTML=ico(b.dataset.k);b.className=b.className.replace(/bg-\S+ text-\S+/,(S.playing===b.dataset.k)?'bg-acc text-ink':'bg-white/10 text-zinc-100')});
 
 /* ---------- vistas ---------- */
+const dlCard=()=>{const mb=PR.piper.list(S.lang).reduce((a,v)=>a+(v.mb||0),0)+380;return `<div class="rounded-xl border border-acc/40 bg-pan p-4 mb-4"><div class="font-serif font-bold text-lg">Descargar todas las voces</div><div class="text-sm text-zinc-400">≈ ${mb} MB en total. Se guardan en este navegador y no se vuelven a bajar. Mejor con Wi-Fi.</div><button data-a="dlall" ${S.dl?'disabled':''} class="mt-3 w-full h-12 rounded-lg bg-acc text-ink font-bold disabled:opacity-40">${S.dl?'Descargando…':S.dlDone?'Comprobar de nuevo':'Descargar todo'}</button><div class="h-2 rounded-full bg-ink border border-white/10 mt-3 overflow-hidden"><i id="dlbar" class="block h-full bg-emerald-500" style="width:${S.dlPct||0}%"></i></div><div id="dltxt" class="text-xs text-zinc-400 mt-1 min-h-[1rem]">${esc(S.dlTxt||'')}</div></div>`};
 const row=(v,pick)=>`<div class="flex items-center gap-3 py-3 border-b border-white/5 last:border-0">
  <button data-a="play" data-k="${v.key}" aria-label="Probar ${esc(v.name)}" class="shrink-0 w-12 h-12 rounded-full grid place-items-center bg-white/10 text-zinc-100">${ico(v.key)}</button>
  <div class="flex-1 min-w-0"><div class="font-bold truncate">${esc(v.name)}</div><div class="text-xs text-zinc-400 truncate">${esc(v.sub)}</div>
  <div class="mt-1 flex gap-1">${v.langs.map(x=>`<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-zinc-300">${x}</span>`).join('')}</div></div>
  ${pick?`<button data-a="use" data-k="${v.key}" class="shrink-0 px-4 h-10 rounded-lg bg-acc text-ink font-bold text-sm">Usar</button>`:''}</div>`;
 function vlist(pick){
-  return `<label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Texto de prueba (${S.lang==='es'?'español':'français'})</label>
+  return (pick?'':dlCard())+`<label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Texto de prueba (${S.lang==='es'?'español':'français'})</label>
   <textarea class="basein w-full h-24 rounded-xl bg-pan border border-white/10 p-3 text-[15px] resize-none">${esc(S.base[S.lang])}</textarea>
   <p class="text-xs text-zinc-500 mt-1 mb-4">Toca ▶ en cualquier voz para oírla leer este texto.</p>`+
   groups().map(g=>`<details open class="mb-4 rounded-xl border border-white/10 bg-pan overflow-hidden">
@@ -182,6 +185,7 @@ document.addEventListener('click',async e=>{
   else if(a==='close'){stopAudio();S.sheet=null;render()}
   else if(a==='use'){S.map[S.sheet]=b.dataset.k;LS.set('map',S.map);stopAudio();S.sheet=null;render()}
   else if(a==='clear'){S.text='';LS.set('text','');render()}
+  else if(a==='dlall')downloadAll();
   else if(a==='go')generate(false);
   else if(a==='listen')generate(true);
   else if(a==='cancel'){S.stop=true;halt()}
@@ -198,6 +202,17 @@ function pieces(text){
   const ss=text.match(/[^.!?…]+[.!?…]+["»”)]*\s*|[^.!?…]+$/g)||[text],out=[];let cur='';
   for(const s of ss){if((cur+s).length>280&&cur){out.push(cur);cur=''}cur+=s}
   if(cur.trim())out.push(cur);return out;
+}
+async function downloadAll(){
+  if(S.dl)return;S.dl=true;S.dlDone=false;S.dlPct=0;S.dlTxt='Preparando…';render();
+  const up=(i,n,t)=>{S.dlPct=Math.round(i*100/n);S.dlTxt=t;const b=$('#dlbar');if(b)b.style.width=S.dlPct+'%';const x=$('#dltxt');if(x)x.textContent=t};
+  try{
+    await PR.piper.init();
+    const T=[...PR.piper.list(S.lang).map(v=>[v.name+' · Piper',()=>PR.piper.ensure(v.key.slice(6))]),['motor de Supertonic',()=>PR.supertonic.init()],...PR.supertonic.list(S.lang).map(v=>[v.name+' · Supertonic',()=>PR.supertonic.style(v.key.slice(11))])];
+    for(let i=0;i<T.length;i++){up(i,T.length,`${i+1}/${T.length} · ${T[i][0]}`);await T[i][1]()}
+    up(1,1,'Listo. Todas las voces están descargadas.');S.dlDone=true;say('');
+  }catch(e){say('Error al descargar: '+e.message,1);up(0,1,'Error: '+e.message)}
+  S.dl=false;render();
 }
 let sched=[],nextT=0;
 const halt=()=>{sched.forEach(s=>{try{s.stop()}catch{}});sched=[]};
