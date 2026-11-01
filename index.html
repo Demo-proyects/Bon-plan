@@ -81,36 +81,39 @@ const PR={
   }}
 };
 PR.device={name:'Voces del dispositivo',by:'Tu teléfono o navegador',lic:'Incluidas en el sistema',size:'0 MB, sin descarga',
-  note:'Muchas voces y prueba al instante. Solo sirven para «Escuchar ahora»: no se pueden guardar en el MP3 y no se mezclan con voces de Piper.',
-  list(l){return (window.speechSynthesis?speechSynthesis.getVoices():[]).filter(v=>v.lang.toLowerCase().replace('_','-').startsWith(l)).sort((a,b)=>b.localService-a.localService||a.name.localeCompare(b.name))
-    .map(v=>({key:'device:'+v.voiceURI,name:v.name,sub:v.lang+(v.localService?' · funciona sin internet':' · necesita internet'),langs:[l.toUpperCase()]}))}};
-
-/* ---------- proveedores en la nube (vía Puter, sin claves) ---------- */
-let pp;const loadPuter=()=>pp||(pp=new Promise((ok,no)=>{if(window.puter)return ok();const s=document.createElement('script');s.src='https://js.puter.com/v2/';s.onload=ok;s.onerror=()=>{pp=null;no(new Error('No se pudo cargar Puter. Revisa tu conexión.'))};document.head.append(s)}));
-async function puterReady(){await loadPuter();if(!S.puterOk){try{if(!puter.auth.isSignedIn())await puter.auth.signIn()}catch(e){throw new Error('Para usar las voces en la nube inicia sesión en Puter (es gratis).')}S.puterOk=true}}
-const INSTR={es:'Narra en español con voz natural y ritmo tranquilo, como un audiolibro.',fr:'Narre en français avec une voix naturelle et un rythme calme, comme un livre audio.'};
-const mk=(id,o)=>PR[id]=Object.assign({lic:'Vía Puter · cuenta gratis con cupo mensual',size:'Sin descarga',cloud:true,
-  async synth(vid,l,text){await puterReady();const a=await puter.ai.txt2speech(text,this.opts(vid,l));
-    const r=await fetch(a.src);if(!r.ok)throw new Error('No se pudo leer el audio de la nube');
-    const c=new AudioContext(),b=await c.decodeAudioData(await r.arrayBuffer());c.close();return{data:b.getChannelData(0),rate:b.sampleRate}}},o);
-const GEM=[['Charon','Hombre','informativo'],['Iapetus','Hombre','claro'],['Algieba','Hombre','suave'],['Rasalgethi','Hombre','informativo'],['Schedar','Hombre','parejo'],['Alnilam','Hombre','firme'],['Orus','Hombre','firme'],['Puck','Hombre','animado'],['Fenrir','Hombre','intenso'],['Umbriel','Hombre','tranquilo'],['Enceladus','Hombre','susurrante'],['Algenib','Hombre','rasposo'],['Achird','Hombre','amistoso'],['Zubenelgenubi','Hombre','casual'],['Sadachbia','Hombre','vivaz'],['Sadaltager','Hombre','erudito'],['Kore','Mujer','firme'],['Zephyr','Mujer','luminosa'],['Leda','Mujer','juvenil'],['Aoede','Mujer','ligera'],['Callirrhoe','Mujer','relajada'],['Autonoe','Mujer','brillante'],['Despina','Mujer','suave'],['Erinome','Mujer','clara'],['Laomedeia','Mujer','animada'],['Achernar','Mujer','suave'],['Gacrux','Mujer','madura'],['Pulcherrima','Mujer','directa'],['Vindemiatrix','Mujer','amable'],['Sulafat','Mujer','cálida']];
-const OAI=[['onyx','masculina, grave'],['echo','masculina'],['ash','masculina'],['verse','masculina'],['ballad','masculina'],['fable','masculina, acento británico'],['cedar',''],['alloy','neutra'],['nova','femenina'],['shimmer','femenina'],['coral','femenina'],['sage','femenina'],['marin','']];
-const POL={Lucia:['es-ES','neural','Mujer · España'],Sergio:['es-ES','neural','Hombre · España'],Mia:['es-MX','neural','Mujer · México'],Andres:['es-MX','neural','Hombre · México'],Lupe:['es-US','neural','Mujer · latina (EE. UU.)'],Pedro:['es-US','neural','Hombre · latino (EE. UU.)'],Conchita:['es-ES','standard','Mujer · España · estándar'],Enrique:['es-ES','standard','Hombre · España · estándar'],Miguel:['es-US','standard','Hombre · latino · estándar'],Penelope:['es-US','standard','Mujer · latina · estándar'],
- Lea:['fr-FR','neural','Mujer · Francia'],Remi:['fr-FR','neural','Hombre · Francia'],Gabrielle:['fr-CA','neural','Mujer · Canadá'],Liam:['fr-CA','neural','Hombre · Canadá'],Celine:['fr-FR','standard','Mujer · Francia · estándar'],Mathieu:['fr-FR','standard','Hombre · Francia · estándar'],Chantal:['fr-CA','standard','Mujer · Canadá · estándar']};
-const ELV=[['Roger','Hombre'],['Charlie','Hombre'],['George','Hombre'],['Callum','Hombre'],['Liam','Hombre'],['Will','Hombre'],['Eric','Hombre'],['Chris','Hombre'],['Brian','Hombre'],['Daniel','Hombre'],['Bill','Hombre'],['Sarah','Mujer'],['Laura','Mujer'],['Charlotte','Mujer'],['Alice','Mujer'],['Matilda','Mujer'],['Jessica','Mujer'],['Lily','Mujer'],['River','Neutra']];
-mk('gemini',{name:'Google Gemini TTS',by:'Google · 30 voces',note:'Calidad muy alta y natural. Cada voz habla español y francés. Entiende indicaciones de estilo.',
-  list:l=>GEM.map(([n,g,s])=>({key:'gemini:'+n,name:n,sub:g+' · '+s,langs:['ES','FR','+']})),opts:(v,l)=>({provider:'gemini',voice:v,instructions:INSTR[l]})});
-mk('openai',{name:'OpenAI TTS',by:'OpenAI · 13 voces',note:'Muy natural y expresiva. Cada voz habla español y francés.',
-  list:l=>OAI.map(([n,s])=>({key:'openai:'+n,name:n[0].toUpperCase()+n.slice(1),sub:'Voz '+(s||'multilingüe'),langs:['ES','FR','+']})),opts:(v,l)=>({provider:'openai',model:'gpt-4o-mini-tts',voice:v,response_format:'mp3',instructions:INSTR[l]})});
-mk('polly',{name:'Amazon Polly',by:'Amazon · voces neurales y estándar',note:'Acentos reales: España, México, latino (EE. UU.), Francia y Canadá. Las neurales suenan mejor.',
-  list:l=>Object.entries(POL).filter(([n,m])=>m[0].startsWith(l)).map(([n,m])=>({key:'polly:'+n,name:n,sub:m[2],langs:[m[0].slice(3)]})),opts:(v,l)=>({provider:'aws-polly',voice:v,engine:POL[v][1],language:POL[v][0]})});
-mk('eleven',{name:'ElevenLabs',by:'ElevenLabs · voces predefinidas',note:'Muy realista, pero gasta más cupo de Puter. Modelo multilingüe: español y francés. Experimental.',
-  list:l=>ELV.map(([n,g])=>({key:'eleven:'+n,name:n,sub:g,langs:['ES','FR','+']})),opts:(v,l)=>({provider:'elevenlabs',model:'eleven_multilingual_v2',voice:v,output_format:'mp3_44100_64'})});
-mk('xai',{name:'xAI Grok',by:'xAI · 5 voces',note:'Voces expresivas con más de 20 idiomas.',
-  list:l=>[['eve','energética'],['ara','cálida'],['rex','segura'],['sal','suave'],['leo','autoritaria']].map(([n,s])=>({key:'xai:'+n,name:n[0].toUpperCase()+n.slice(1),sub:'Voz '+s,langs:['ES','FR','+']})),opts:(v,l)=>({provider:'xai',voice:v,language:l,output_format:'mp3'})});
-const cloudCard=()=>`<div class="rounded-xl border border-white/10 bg-pan p-4 mb-4"><div class="font-serif font-bold text-lg">Voces en la nube</div><div class="text-sm text-zinc-400">Gemini, OpenAI, Amazon Polly, ElevenLabs y xAI, sin claves. Usan tu cuenta gratuita de Puter, que tiene un cupo mensual limitado.</div><button data-a="puter" class="mt-3 w-full h-11 rounded-lg ${S.puterOk?'border border-white/10':'bg-acc text-ink'} font-bold">${S.puterOk?'Puter conectado ✓':'Conectar cuenta Puter (gratis)'}</button></div>`;
-const ORDER=['device','gemini','openai','polly','eleven','xai','piper','supertonic'];
-const speakDev=(key,text,done)=>{const v=speechSynthesis.getVoices().find(x=>'device:'+x.voiceURI===key),u=new SpeechSynthesisUtterance(text);if(v){u.voice=v;u.lang=v.lang}u.onend=u.onerror=done;speechSynthesis.speak(u)};
+  note:'Prueba al instante. El navegador no informa el género: lo deduzco por el nombre (a veces falla). Las variantes «grave» bajan el tono; si en tu teléfono suenan igual, tu motor ignora el tono. Solo sirven para «Escuchar ahora», no para el MP3.',
+  list(l){
+    const M=/jorge|juan|diego|carlos|pablo|ra[uú]l|[aá]lvaro|enrique|miguel|pedro|alex|antonio|andr[eé]s|sergio|luis|felipe|jacques|thomas|nicolas|mathieu|henri|antoine|daniel|paul|male|hombre/i,F=/m[oó]nica|paulina|marisol|helena|laura|sabina|luc[ií]a|conchita|esperanza|mar[ií]a|pilar|ang[eé]lica|francisca|soledad|am[eé]lie|audrey|aur[eé]lie|marie|julie|hortense|denise|c[eé]line|chantal|l[eé]a|female|mujer/i;
+    const vs=(window.speechSynthesis?speechSynthesis.getVoices():[]).filter(v=>v.lang.toLowerCase().replace('_','-').startsWith(l));
+    const out=[];
+    vs.forEach(v=>{const g=M.test(v.name)?'m':F.test(v.name)?'f':'?',base=v.lang+(v.localService?' · sin internet':' · necesita internet'),gl=g==='m'?'Hombre (probable)':g==='f'?'Mujer (probable)':'Género no indicado';
+      out.push({g,key:'device:'+v.voiceURI,name:v.name,sub:gl+' · '+base,langs:[l.toUpperCase()]});
+      if(g!=='m')out.push({g:'v',key:'device:'+v.voiceURI+'~p0.55',name:v.name+' · grave',sub:'Misma voz con tono bajo, suena más masculina · '+base,langs:[l.toUpperCase()]})});
+    const R={m:0,'?':1,v:2,f:3};return out.sort((a,b)=>R[a.g]-R[b.g]);
+  }};
+const isEdge=/EdgA|EdgiOS|Edg\//.test(navigator.userAgent);
+const RG=(()=>{try{return new Intl.DisplayNames(['es'],{type:'region'})}catch{return{of:x=>x}}})();
+PR.edge={name:'Microsoft Edge (voces neurales)',by:'Microsoft · gratis y sin límite',lic:'Servicio de lectura en voz alta de Edge',size:'Sin descarga',cloud:true,
+  note:isEdge?'Cientos de voces con hombres y mujeres de España, México, República Dominicana, Argentina, Colombia, Francia, Canadá y más. Se pueden guardar en MP3.':'⚠ Solo funciona si abres esta página en el navegador Microsoft Edge (gratis en Android, iPhone y PC). Microsoft bloquea las conexiones desde Chrome.',
+  async init(){
+    if(!isEdge||this.all)return;
+    const m=await import('https://cdn.jsdelivr.net/npm/@andresaya/edge-tts@1.9.1/dist/browser/edge-tts.esm.min.js');
+    this.E=m.EdgeTTS;this.all=(await new m.EdgeTTS().getVoices()).map(v=>({id:v.ShortName,loc:v.Locale,g:v.Gender,sec:v.SecondaryLocaleList||[]}));
+  },
+  list(l){
+    const PRI=l==='es'?['es-DO','es-MX','es-US','es-ES']:['fr-FR','fr-CA'];
+    return (this.all||[]).filter(v=>v.loc.startsWith(l)||v.sec.some(x=>x.startsWith(l)))
+      .sort((a,b)=>(a.g==='Male'?0:1)-(b.g==='Male'?0:1)||(PRI.indexOf(a.loc)+1||99)-(PRI.indexOf(b.loc)+1||99)||a.id.localeCompare(b.id))
+      .map(v=>{const own=v.loc.startsWith(l),nm=v.id.replace(/^[a-z]{2,3}-[A-Z]{2,4}-/,'').replace(/Neural$/,'').replace(/Multilingual$/,''),multi=/Multilingual/.test(v.id);
+        return{key:'edge:'+v.id,name:nm+(multi?' (multilingüe)':''),sub:(v.g==='Male'?'Hombre':'Mujer')+' · '+(own?RG.of(v.loc.split('-')[1]):'habla '+(l==='es'?'español':'francés')+' con acento de otro idioma'),langs:[l.toUpperCase()].concat(multi?['+']:[])}});
+  },
+  async synth(id,l,text){
+    await this.init();const t=new this.E();await t.synthesize(text,id);
+    const c=new AudioContext(),b=await c.decodeAudioData(t.getAudioData().slice().buffer);c.close();
+    return{data:b.getChannelData(0),rate:b.sampleRate};
+  }};
+const ORDER=['edge','device','piper','supertonic'];
+const speakDev=(key,text,done)=>{const i=key.lastIndexOf('~p'),k=i>0?key.slice(0,i):key,v=speechSynthesis.getVoices().find(x=>'device:'+x.voiceURI===k),u=new SpeechSynthesisUtterance(text);if(i>0)u.pitch=+key.slice(i+2)||1;if(v){u.voice=v;u.lang=v.lang}u.onend=u.onerror=done;speechSynthesis.speak(u)};
 try{speechSynthesis.onvoiceschanged=()=>{(S.tab==='voices'||S.sheet)&&render()}}catch{}
 const groups=()=>ORDER.map(id=>({id,p:PR[id],v:PR[id].list(S.lang)})).map(g=>(g.v.forEach(v=>LBL[v.key]=g.p.name+' · '+v.name),g));
 
@@ -154,14 +157,14 @@ const row=(v,pick)=>`<div class="flex items-center gap-3 py-3 border-b border-wh
  <div class="mt-1 flex gap-1">${v.langs.map(x=>`<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-zinc-300">${x}</span>`).join('')}</div></div>
  ${pick?`<button data-a="use" data-k="${v.key}" class="shrink-0 px-4 h-10 rounded-lg bg-acc text-ink font-bold text-sm">Usar</button>`:''}</div>`;
 function vlist(pick){
-  return (pick?'':dlCard())+cloudCard()+`<label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Texto de prueba (${S.lang==='es'?'español':'français'})</label>
+  return (pick?'':dlCard())+`<label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Texto de prueba (${S.lang==='es'?'español':'français'})</label>
   <textarea class="basein w-full h-24 rounded-xl bg-pan border border-white/10 p-3 text-[15px] resize-none">${esc(S.base[S.lang])}</textarea>
   <p class="text-xs text-zinc-500 mt-1 mb-4">Toca ▶ en cualquier voz para oírla leer este texto.</p>`+
   groups().map(g=>`<details ${g.id==='supertonic'?'':'open'} class="mb-4 rounded-xl border border-white/10 bg-pan overflow-hidden">
    <summary class="p-4 cursor-pointer flex items-start justify-between gap-3"><div><div class="font-serif font-bold text-xl">${g.p.name}${g.p.cloud?' <span class="ml-1 align-middle text-[10px] font-bold px-1.5 py-0.5 rounded bg-acc/20 text-acc">NUBE</span>':''}</div>
    <div class="text-xs text-zinc-400">${g.p.by} · ${g.p.lic} · ${g.p.size}</div><div class="text-sm text-zinc-300 mt-1">${g.p.note}</div></div>
    <span class="text-xs font-bold text-acc shrink-0 mt-1">${g.v.length} voces</span></summary>
-   <div class="px-4 border-t border-white/10">${g.v.length?g.v.map(v=>row(v,pick)).join(''):'<p class="py-4 text-sm text-zinc-400">Cargando lista…</p>'}</div></details>`).join('');
+   <div class="px-4 border-t border-white/10">${g.v.length?g.v.map(v=>row(v,pick)).join(''):`<p class="py-4 text-sm text-zinc-400">${g.id==='edge'&&!isEdge?'Abre esta página en Microsoft Edge para ver estas voces.':'Cargando lista…'}</p>`}</div></details>`).join('');
 }
 function parse(raw){
   const segs=[],re=/\[([^\[\]:]{1,40}):\s*([^\[\]]+)\]/g;
@@ -223,7 +226,6 @@ document.addEventListener('click',async e=>{
   else if(a==='use'){S.map[S.sheet]=b.dataset.k;LS.set('map',S.map);stopAudio();S.sheet=null;render()}
   else if(a==='clear'){S.text='';LS.set('text','');render()}
   else if(a==='dlall')downloadAll();
-  else if(a==='puter'){try{await puterReady();render();say('Puter conectado.')}catch(e){say(e.message,1)}}
   else if(a==='go')generate(false);
   else if(a==='listen')generate(true);
   else if(a==='cancel'){S.stop=true;halt();try{speechSynthesis.cancel()}catch{}}
@@ -302,6 +304,7 @@ async function generate(listen){
 
 render();
 directives();
+if(isEdge)PR.edge.init().then(()=>{(S.tab==='voices'||S.sheet)&&render()}).catch(e=>say('Voces de Edge: '+e.message,1));
 PR.piper.init().then(()=>{S.tab!=='gen'&&render()}).catch(e=>say('No se pudo cargar la lista de Piper: '+e.message,1));
 </script>
 </body>
