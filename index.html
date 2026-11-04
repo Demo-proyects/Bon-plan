@@ -7,9 +7,7 @@
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script>tailwind.config={theme:{extend:{colors:{ink:'#12161c',pan:'#1b212a',acc:'#d4a94f'},fontFamily:{serif:['Newsreader','Georgia','serif'],sans:['"Atkinson Hyperlegible"','system-ui','sans-serif']}}}}</script>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<script type="importmap">{"imports":{"onnxruntime-web":"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.mjs","onnxruntime-web/wasm":"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.mjs"}}</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
-<style>textarea:focus,button:focus-visible{outline:2px solid #d4a94f;outline-offset:1px}summary{list-style:none}summary::-webkit-details-marker{display:none}@keyframes sp{to{transform:rotate(360deg)}}.sp{animation:sp .9s linear infinite}</style>
+<style>textarea:focus,input:focus,button:focus-visible{outline:2px solid #d4a94f;outline-offset:1px}summary{list-style:none}summary::-webkit-details-marker{display:none}input[type=range]{accent-color:#d4a94f}</style>
 </head>
 <body class="bg-ink text-zinc-100 font-sans antialiased">
 <header class="sticky top-0 z-20 bg-ink border-b border-white/10" style="padding-top:env(safe-area-inset-top)">
@@ -23,167 +21,94 @@
 <nav id="nav" class="fixed bottom-0 inset-x-0 z-20 bg-ink border-t border-white/10 grid grid-cols-3" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
 <div id="sheet" class="fixed inset-0 z-30 bg-ink overflow-y-auto hidden"></div>
 
-<script type="module">
-import * as ort from 'onnxruntime-web';
-ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';ort.env.wasm.numThreads=1;
-const $=(s,e=document)=>e.querySelector(s), RATE=22050, NARR='Narrador';
+<script>
+const $=(s,e=document)=>e.querySelector(s), NARR='Narrador';
 const HUES=['#d4a94f','#6fa8c9','#c97f9a','#7fae8c','#a58bd0','#d0906a','#6fc0b8','#b8b86a'];
-const ST='https://huggingface.co/Supertone/supertonic-3/resolve/3cadd1ee6394adea1bd021217a0e650ede09a323';
-const HELPER='https://cdn.jsdelivr.net/gh/supertone-inc/supertonic@1e9799e964ea4c0dad7cde993b65c3c813a7b373/web/helper.js';
-const BASE={es:'Era una noche tranquila cuando ella cruzó el puente. «No tengas miedo», susurró, «yo estaré contigo».',fr:'La nuit était calme quand elle traversa le pont. « N’aie pas peur », murmura-t-elle, « je serai avec toi ».'};
-const LS={get(k,d){try{return JSON.parse(localStorage.getItem('nv2-'+k))??d}catch{return d}},set(k,v){try{localStorage.setItem('nv2-'+k,JSON.stringify(v))}catch{}}};
-const S={lang:LS.get('lang','es'),tab:'text',map:LS.get('map',{}),text:LS.get('text',''),base:LS.get('base',{...BASE}),sheet:null,playing:null,load:null,busy:false,stop:false,out:null,pct:0};
-const LBL={},cache=new Map();
+const BASE={es:'Era una noche tranquila cuando ella cruzó el puente. «No tengas miedo», susurró, «yo estaré contigo».',fr:'La nuit était calme quand elle traversa le pont. « N’aie pas peur », murmura-t-elle, « je serai avec toi ».',en:'It was a quiet night when she crossed the bridge.'};
+const LS={get(k,d){try{return JSON.parse(localStorage.getItem('nv3-'+k))??d}catch{return d}},set(k,v){try{localStorage.setItem('nv3-'+k,JSON.stringify(v))}catch{}}};
+const S={lang:LS.get('lang','es'),tab:'text',map:LS.get('map',{}),mapn:LS.get('mapn',{}),want:{},text:LS.get('text',''),base:Object.assign({},BASE,LS.get('base',{})),q:'',sheet:null,playing:null,busy:false,stop:false,rate:LS.get('rate',1),from:0};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const cap=s=>s.charAt(0).toUpperCase()+s.slice(1).replace(/_/g,' ');
-const say=(m,e)=>{const d=$('#dltxt');if(d&&S.dl)d.textContent=m;const s=$('#st');s.textContent=m;s.className=s.className.replace(/text-(red-400|zinc-400)/g,'')+(e?' text-red-400':' text-zinc-400')};
-let lock=Promise.resolve();const queue=f=>(lock=lock.then(f,f));
+const strip=s=>String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const say=(m,e)=>{const s=$('#st');s.textContent=m;s.className='max-w-xl mx-auto px-4 pb-2 text-sm min-h-[1.5rem] truncate '+(e?'text-red-400':'text-zinc-400')};
 
-/* ---------- proveedores ---------- */
-const PR={
- piper:{name:'Piper',by:'Rhasspy · Open Home Foundation',lic:'MIT',size:'15–60 MB por voz',
-  note:'Rápido y ligero. Cada voz habla un idioma y un acento. Solo calidad media y alta.',
-  async init(){
-    if(this.lib)return;
-    this.lib=await import('https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/dist/piper-tts-web.js');
-    this.lib.TtsSession.WASM_LOCATIONS.onnxWasm='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
-    const r=await this.lib.voices();
-    this.all=(Array.isArray(r)?r:Object.values(r)).map(v=>({id:v.key,name:cap(v.name),code:v.language.code,fam:v.language.family||v.language.code.slice(0,2),q:v.quality,multi:(v.num_speakers||1)>1,mb:Math.round(Object.entries(v.files||{}).filter(([k])=>k.endsWith('.onnx')).reduce((a,[,f])=>a+f.size_bytes,0)/1e6)}));
-  },
-  list(l){const QR={high:3,medium:2,low:1,x_low:0},QL={high:'alta',medium:'media',low:'baja',x_low:'muy baja'};
-    return (this.all||[]).filter(v=>v.fam===l&&(l==='es'||(!v.multi&&QR[v.q]>=2))).sort((a,b)=>QR[b.q]-QR[a.q]||a.code.localeCompare(b.code)||a.name.localeCompare(b.name))
-    .map(v=>({key:'piper:'+v.id,name:v.name+(v.multi?' (voz 1)':''),mb:v.mb,sub:v.code.replace('_',' · ')+' · calidad '+QL[v.q]+' · '+v.mb+' MB',langs:[l.toUpperCase()]}))},
-  async sess(id){
-    await this.init();const T=this.lib.TtsSession;this.S=this.S||{};
-    if(!this.S[id]){const k=Object.keys(this.S);if(k.length>=3)delete this.S[k[0]];
-      T._instance=null;this.S[id]=await T.create({voiceId:id,progress:p=>p.total&&p.url&&/onnx/.test(p.url)&&say(`Descargando voz… ${Math.round(p.loaded*100/p.total)}%`)});T._instance=null}
-    return this.S[id]},
-  async ensure(id){await this.init();const t=this.lib;if(!(await t.stored().catch(()=>[])).includes(id))await t.download(id,p=>p.total&&say(`Descargando voz… ${Math.round(p.loaded*100/p.total)}%`))},
-  async synth(id,l,text){
-    const ss=await this.sess(id);
-    const b=await ss.predict(text),c=new AudioContext(),a=await c.decodeAudioData(await b.arrayBuffer());c.close();
-    return{data:a.getChannelData(0),rate:a.sampleRate};
-  }},
- supertonic:{name:'Supertonic 3',by:'Supertone',lic:'OpenRAIL-M',size:'≈ 380 MB, una sola vez',
-  note:'⚠ Experimental. Pesa ≈ 380 MB y gasta mucha memoria: en teléfonos el navegador suele cerrarse. Mejor probarlo en computadora.',
-  async init(){
-    if(this.tts)return;say('Cargando Supertonic (la primera vez descarga ≈ 380 MB)…');
-    this.H=await import(HELPER);
-    const r=await this.H.loadTextToSpeech(ST+'/onnx',{executionProviders:['wasm']},(n,i,t)=>say(`Supertonic: ${n} (${i}/${t})`));
-    this.tts=r.textToSpeech;this.sty={};
-  },
-  list(l){return ['F','M'].flatMap(g=>[1,2,3,4,5].map(n=>({key:'supertonic:'+g+n,name:(g==='F'?'Mujer ':'Hombre ')+n,sub:'Voz '+g+n+' · multilingüe',langs:['ES','FR','+29']})))},
-  async style(id){await this.init();return this.sty[id]||(this.sty[id]=await this.H.loadVoiceStyle([`${ST}/voice_styles/${id}.json`]))},
-  async synth(id,l,text){
-    const s=await this.style(id);
-    const{wav}=await this.tts.call(text,l,s,8,1.05,0.15);
-    return{data:Float32Array.from(wav),rate:this.tts.sampleRate};
-  }}
-};
-PR.device={name:'Voces del dispositivo',by:'Tu teléfono o navegador',lic:'Incluidas en el sistema',size:'0 MB, sin descarga',
-  note:'Prueba al instante. El navegador no informa el género: lo deduzco por el nombre (a veces falla). Las variantes «grave» bajan el tono; si en tu teléfono suenan igual, tu motor ignora el tono. Solo sirven para «Escuchar ahora», no para el MP3.',
-  list(l){
-    const M=/jorge|juan|diego|carlos|pablo|ra[uú]l|[aá]lvaro|enrique|miguel|pedro|alex|antonio|andr[eé]s|sergio|luis|felipe|jacques|thomas|nicolas|mathieu|henri|antoine|daniel|paul|male|hombre/i,F=/m[oó]nica|paulina|marisol|helena|laura|sabina|luc[ií]a|conchita|esperanza|mar[ií]a|pilar|ang[eé]lica|francisca|soledad|am[eé]lie|audrey|aur[eé]lie|marie|julie|hortense|denise|c[eé]line|chantal|l[eé]a|female|mujer/i;
-    const vs=(window.speechSynthesis?speechSynthesis.getVoices():[]).filter(v=>v.lang.toLowerCase().replace('_','-').startsWith(l));
-    const out=[];
-    vs.forEach(v=>{const g=M.test(v.name)?'m':F.test(v.name)?'f':'?',base=v.lang+(v.localService?' · sin internet':' · necesita internet'),gl=g==='m'?'Hombre (probable)':g==='f'?'Mujer (probable)':'Género no indicado';
-      out.push({g,key:'device:'+v.voiceURI,name:v.name,sub:gl+' · '+base,langs:[l.toUpperCase()]});
-      if(g!=='m')out.push({g:'v',key:'device:'+v.voiceURI+'~p0.55',name:v.name+' · grave',sub:'Misma voz con tono bajo, suena más masculina · '+base,langs:[l.toUpperCase()]})});
-    const R={m:0,'?':1,v:2,f:3};return out.sort((a,b)=>R[a.g]-R[b.g]);
-  }};
-const isEdge=/EdgA|EdgiOS|Edg\//.test(navigator.userAgent);
-const RG=(()=>{try{return new Intl.DisplayNames(['es'],{type:'region'})}catch{return{of:x=>x}}})();
-PR.edge={name:'Microsoft Edge (voces neurales)',by:'Microsoft · gratis y sin límite',lic:'Servicio de lectura en voz alta de Edge',size:'Sin descarga',cloud:true,
-  note:isEdge?'Cientos de voces con hombres y mujeres de España, México, República Dominicana, Argentina, Colombia, Francia, Canadá y más. Se pueden guardar en MP3.':'⚠ Solo funciona si abres esta página en el navegador Microsoft Edge (gratis en Android, iPhone y PC). Microsoft bloquea las conexiones desde Chrome.',
-  async init(){
-    if(!isEdge||this.all)return;
-    const m=await import('https://cdn.jsdelivr.net/npm/@andresaya/edge-tts@1.9.1/dist/browser/edge-tts.esm.min.js');
-    this.E=m.EdgeTTS;this.all=(await new m.EdgeTTS().getVoices()).map(v=>({id:v.ShortName,loc:v.Locale,g:v.Gender,sec:v.SecondaryLocaleList||[]}));
-  },
-  list(l){
-    const PRI=l==='es'?['es-DO','es-MX','es-US','es-ES']:['fr-FR','fr-CA'];
-    return (this.all||[]).filter(v=>v.loc.startsWith(l)||v.sec.some(x=>x.startsWith(l)))
-      .sort((a,b)=>(a.g==='Male'?0:1)-(b.g==='Male'?0:1)||(PRI.indexOf(a.loc)+1||99)-(PRI.indexOf(b.loc)+1||99)||a.id.localeCompare(b.id))
-      .map(v=>{const own=v.loc.startsWith(l),nm=v.id.replace(/^[a-z]{2,3}-[A-Z]{2,4}-/,'').replace(/Neural$/,'').replace(/Multilingual$/,''),multi=/Multilingual/.test(v.id);
-        return{key:'edge:'+v.id,name:nm+(multi?' (multilingüe)':''),sub:(v.g==='Male'?'Hombre':'Mujer')+' · '+(own?RG.of(v.loc.split('-')[1]):'habla '+(l==='es'?'español':'francés')+' con acento de otro idioma'),langs:[l.toUpperCase()].concat(multi?['+']:[])}});
-  },
-  async synth(id,l,text){
-    await this.init();const t=new this.E();await t.synthesize(text,id);
-    const c=new AudioContext(),b=await c.decodeAudioData(t.getAudioData().slice().buffer);c.close();
-    return{data:b.getChannelData(0),rate:b.sampleRate};
-  }};
-const ORDER=['edge','device','piper','supertonic'];
-const speakDev=(key,text,done)=>{const i=key.lastIndexOf('~p'),k=i>0?key.slice(0,i):key,v=speechSynthesis.getVoices().find(x=>'device:'+x.voiceURI===k),u=new SpeechSynthesisUtterance(text);if(i>0)u.pitch=+key.slice(i+2)||1;if(v){u.voice=v;u.lang=v.lang}u.onend=u.onerror=done;speechSynthesis.speak(u)};
-try{speechSynthesis.onvoiceschanged=()=>{(S.tab==='voices'||S.sheet)&&render()}}catch{}
-const groups=()=>ORDER.map(id=>({id,p:PR[id],v:PR[id].list(S.lang)})).map(g=>(g.v.forEach(v=>LBL[v.key]=g.p.name+' · '+v.name),g));
+/* ---------- voces del dispositivo ---------- */
+const VS=()=>{try{return speechSynthesis.getVoices()}catch{return[]}};
+const vk=v=>v.voiceURI+'||'+v.lang;
+const byKey=k=>VS().find(v=>vk(v)===k);
+const fam=v=>{const c=v.lang.toLowerCase().replace('_','-').split('-')[0];return{spa:'es',fra:'fr',fre:'fr',eng:'en'}[c]||c};
+const label=v=>{const c=v.lang.replace('_','-'),[a,b]=c.split('-');try{const L=new Intl.DisplayNames(['es'],{type:'language'}).of(a),R=b&&b.length===2?new Intl.DisplayNames(['es'],{type:'region'}).of(b.toUpperCase()):b;return L.charAt(0).toUpperCase()+L.slice(1)+(R?' · '+R:'')}catch{return c}};
+const shown=()=>VS().filter(v=>(S.lang==='all'||fam(v)===S.lang)&&(!S.q||strip(v.name+' '+v.lang+' '+v.voiceURI).includes(strip(S.q))));
+function res(w){
+  let v=S.map[w]&&byKey(S.map[w]);if(v)return v;
+  const n=S.want[w];
+  if(n){v=VS().find(x=>strip(x.name).includes(strip(n))||strip(x.voiceURI).includes(strip(n)));if(v){S.map[w]=vk(v);S.mapn[w]=v.name;LS.set('map',S.map);LS.set('mapn',S.mapn);return v}}
+  return null;
+}
+function speak(v,text,done){
+  const u=new SpeechSynthesisUtterance(text);u.voice=v;u.lang=v.lang;u.rate=S.rate;u.onend=u.onerror=done;speechSynthesis.speak(u);
+}
+function stopAll(){try{speechSynthesis.cancel()}catch{}S.playing=null;mark()}
+function test(k){
+  if(S.playing===k){stopAll();return}
+  stopAll();const v=byKey(k);if(!v){say('Esa voz ya no está disponible con el motor actual.',1);return}
+  S.playing=k;mark();say('');
+  setTimeout(()=>speak(v,S.base[fam(v)]||S.base.en,()=>{if(S.playing===k){S.playing=null;mark()}}),60);
+}
+const ico=k=>S.playing===k?'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>':'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const mark=()=>document.querySelectorAll('[data-a=play]').forEach(b=>{b.innerHTML=ico(b.dataset.k);b.className='shrink-0 w-12 h-12 rounded-full grid place-items-center '+(S.playing===b.dataset.k?'bg-acc text-ink':'bg-white/10 text-zinc-100')});
 
-async function resample(d,rate){
-  if(rate===RATE)return d;
-  const b=new AudioBuffer({length:d.length,sampleRate:rate,numberOfChannels:1});b.copyToChannel(d,0);
-  const o=new OfflineAudioContext(1,Math.max(1,Math.ceil(d.length*RATE/rate)),RATE),s=o.createBufferSource();
-  s.buffer=b;s.connect(o.destination);s.start();return (await o.startRendering()).getChannelData(0);
-}
-function synth(key,l,text){
-  const ck=key+l+text;if(cache.has(ck))return Promise.resolve(cache.get(ck));
-  const[pid,vid]=[key.slice(0,key.indexOf(':')),key.slice(key.indexOf(':')+1)];
-  return queue(async()=>{const r=await PR[pid].synth(vid,l,text),f=await resample(r.data,r.rate);if(text.length<200)cache.set(ck,f);return f});
-}
-
-/* ---------- audio de prueba ---------- */
-let ac,node;
-const stopAudio=()=>{try{speechSynthesis.cancel()}catch{}try{node&&(node.onended=null,node.stop())}catch{}node=null;S.playing=S.load=null;mark()};
-async function play(key){
-  if(S.playing===key){stopAudio();return}
-  stopAudio();
-  if(key.startsWith('device:')){S.playing=key;mark();speakDev(key,S.base[S.lang],()=>{if(S.playing===key){S.playing=null;mark()}});return}
-  if(key.startsWith('supertonic:')&&!PR.supertonic.tts&&/Android|iPhone|iPad/i.test(navigator.userAgent)&&!confirm('Supertonic descarga ≈ 380 MB y suele cerrar el navegador en teléfonos. ¿Probar de todos modos?'))return;
-  S.playing=S.load=key;mark();ac=ac||new AudioContext();ac.resume();
-  try{
-    const f=await synth(key,S.lang,S.base[S.lang]);if(S.playing!==key)return;
-    S.load=null;mark();say('');
-    const b=ac.createBuffer(1,f.length,RATE);b.copyToChannel(f,0);
-    node=ac.createBufferSource();node.buffer=b;node.connect(ac.destination);
-    node.onended=()=>{S.playing=null;mark()};node.start();
-  }catch(e){S.playing=S.load=null;mark();say('No se pudo reproducir: '+e.message,1)}
-}
-const ico=k=>S.load===k?'<svg class="sp" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>':S.playing===k?'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>':'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-const mark=()=>document.querySelectorAll('[data-a=play]').forEach(b=>{b.innerHTML=ico(b.dataset.k);b.className=b.className.replace(/bg-\S+ text-\S+/,(S.playing===b.dataset.k)?'bg-acc text-ink':'bg-white/10 text-zinc-100')});
-
-/* ---------- vistas ---------- */
-const dlCard=()=>{const mb=PR.piper.list(S.lang).reduce((a,v)=>a+(v.mb||0),0);return `<div class="rounded-xl border border-acc/40 bg-pan p-4 mb-4"><div class="font-serif font-bold text-lg">Descargar todas las voces de Piper</div><div class="text-sm text-zinc-400">≈ ${mb} MB en total. Se guardan en este navegador y no se vuelven a bajar. Las voces del dispositivo no necesitan descarga. Supertonic queda aparte por su peso.</div><button data-a="dlall" ${S.dl?'disabled':''} class="mt-3 w-full h-12 rounded-lg bg-acc text-ink font-bold disabled:opacity-40">${S.dl?'Descargando…':S.dlDone?'Comprobar de nuevo':'Descargar todo'}</button><div class="h-2 rounded-full bg-ink border border-white/10 mt-3 overflow-hidden"><i id="dlbar" class="block h-full bg-emerald-500" style="width:${S.dlPct||0}%"></i></div><div id="dltxt" class="text-xs text-zinc-400 mt-1 min-h-[1rem]">${esc(S.dlTxt||'')}</div></div>`};
-const row=(v,pick)=>`<div class="flex items-center gap-3 py-3 border-b border-white/5 last:border-0">
- <button data-a="play" data-k="${v.key}" aria-label="Probar ${esc(v.name)}" class="shrink-0 w-12 h-12 rounded-full grid place-items-center bg-white/10 text-zinc-100">${ico(v.key)}</button>
- <div class="flex-1 min-w-0"><div class="font-bold truncate">${esc(v.name)}</div><div class="text-xs text-zinc-400 truncate">${esc(v.sub)}</div>
- <div class="mt-1 flex gap-1">${v.langs.map(x=>`<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-zinc-300">${x}</span>`).join('')}</div></div>
- ${pick?`<button data-a="use" data-k="${v.key}" class="shrink-0 px-4 h-10 rounded-lg bg-acc text-ink font-bold text-sm">Usar</button>`:''}</div>`;
-function vlist(pick){
-  return (pick?'':dlCard())+`<label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Texto de prueba (${S.lang==='es'?'español':'français'})</label>
-  <textarea class="basein w-full h-24 rounded-xl bg-pan border border-white/10 p-3 text-[15px] resize-none">${esc(S.base[S.lang])}</textarea>
-  <p class="text-xs text-zinc-500 mt-1 mb-4">Toca ▶ en cualquier voz para oírla leer este texto.</p>`+
-  groups().map(g=>`<details ${g.id==='supertonic'?'':'open'} class="mb-4 rounded-xl border border-white/10 bg-pan overflow-hidden">
-   <summary class="p-4 cursor-pointer flex items-start justify-between gap-3"><div><div class="font-serif font-bold text-xl">${g.p.name}${g.p.cloud?' <span class="ml-1 align-middle text-[10px] font-bold px-1.5 py-0.5 rounded bg-acc/20 text-acc">NUBE</span>':''}</div>
-   <div class="text-xs text-zinc-400">${g.p.by} · ${g.p.lic} · ${g.p.size}</div><div class="text-sm text-zinc-300 mt-1">${g.p.note}</div></div>
-   <span class="text-xs font-bold text-acc shrink-0 mt-1">${g.v.length} voces</span></summary>
-   <div class="px-4 border-t border-white/10">${g.v.length?g.v.map(v=>row(v,pick)).join(''):`<p class="py-4 text-sm text-zinc-400">${g.id==='edge'&&!isEdge?'Abre esta página en Microsoft Edge para ver estas voces.':'Cargando lista…'}</p>`}</div></details>`).join('');
-}
+/* ---------- texto ---------- */
+const nm=n=>/^narrad(or|eur)$/i.test(n.trim())?NARR:n.trim();
 function parse(raw){
   const segs=[],re=/\[([^\[\]:]{1,40}):\s*([^\[\]]+)\]/g;
   for(const line of raw.split(/\r?\n/)){
     const t=line.trim();if(!t||/^@voz/i.test(t))continue;
-    if(/^##\s+/.test(t)){segs.push({w:NARR,t:t.replace(/^##\s+/,'').replace(/[.:!?]*$/,'.')},{p:1300});continue}
+    if(/^##\s+/.test(t)){segs.push({w:NARR,t:t.replace(/^##\s+/,'').replace(/[.:!?]*$/,'.'),h:1},{p:1300});continue}
     let last=0,x;re.lastIndex=0;
     while((x=re.exec(t))){const a=t.slice(last,x.index).trim();if(a)segs.push({w:NARR,t:a});segs.push({w:nm(x[1]),t:x[2].trim()});last=re.lastIndex}
     const b=t.slice(last).trim();if(b)segs.push({w:NARR,t:b});segs.push({p:450});
   }
   return segs;
 }
-const nm=n=>/^narrad(or|eur)$/i.test(n.trim())?NARR:n.trim();
 const names=()=>[NARR,...new Set(parse(S.text).filter(s=>s.w&&s.w!==NARR).map(s=>s.w))];
-function directives(){for(const l of S.text.split(/\r?\n/)){const m=l.trim().match(/^@voz\s+(.+?)\s*=\s*(\S+)/i);if(m)S.map[nm(m[1])]=m[2].includes(':')?m[2]:'piper:'+m[2]}LS.set('map',S.map)}
-const castHtml=()=>names().map((w,i)=>{const k=S.map[w];return `<div class="flex rounded-xl bg-pan border border-white/10 overflow-hidden"><i class="w-1.5 shrink-0" style="background:${HUES[i%8]}"></i>
- <div class="flex-1 min-w-0 p-3"><div class="font-serif font-bold text-lg">${esc(w)}${w===NARR?' <span class="text-xs font-sans font-normal text-zinc-400">cuenta todo lo demás</span>':''}</div>
- <div class="text-sm truncate ${k?'text-zinc-300':'text-acc'}">${k?esc(LBL[k]||k.split(':')[1]):'Sin voz asignada'}</div></div>
- <button data-a="pick" data-w="${esc(w)}" class="px-4 font-bold text-acc">${k?'Cambiar':'Elegir'}</button></div>`}).join('<div class="h-2"></div>');
+function directives(){for(const l of S.text.split(/\r?\n/)){const m=l.trim().match(/^@voz\s+(.+?)\s*=\s*(.+)$/i);if(m)S.want[nm(m[1])]=m[2].trim()}}
+function pieces(text,max=280){
+  const ss=text.match(/[^.!?…]+[.!?…]+["»”)]*\s*|[^.!?…]+$/g)||[text],out=[];let cur='';
+  for(const s of ss){if((cur+s).length>max&&cur){out.push(cur);cur=''}cur+=s}
+  if(cur.trim())out.push(cur);return out;
+}
+
+/* ---------- vistas ---------- */
+const row=(v,pick)=>`<div class="flex items-center gap-3 py-3 border-b border-white/5 last:border-0">
+ <button data-a="play" data-k="${esc(vk(v))}" aria-label="Probar ${esc(v.name)}" class="shrink-0 w-12 h-12 rounded-full grid place-items-center bg-white/10 text-zinc-100">${ico(vk(v))}</button>
+ <div class="flex-1 min-w-0"><div class="font-bold truncate">${esc(v.name)}</div>
+ <div class="text-xs text-zinc-400 truncate">${esc(v.lang)} · ${v.localService?'sin internet':'necesita internet'}${v.default?' · predeterminada':''}</div>
+ <div class="text-[11px] text-zinc-500 truncate">${esc(v.voiceURI)}</div></div>
+ ${pick?`<button data-a="use" data-k="${esc(vk(v))}" class="shrink-0 px-4 h-10 rounded-lg bg-acc text-ink font-bold text-sm">Usar</button>`:''}</div>`;
+function vrows(pick){
+  if(!VS().length)return '<p class="text-sm text-zinc-400">No se detecta ninguna voz. Revisa Paramètres › Synthèse vocale, vuelve aquí y toca «Actualizar lista».</p>';
+  const vs=shown();if(!vs.length)return '<p class="text-sm text-zinc-400">Ninguna voz coincide con el filtro.</p>';
+  const g={};vs.forEach(v=>(g[label(v)]=g[label(v)]||[]).push(v));
+  return Object.keys(g).sort().map(k=>`<div class="mb-4 rounded-xl border border-white/10 bg-pan overflow-hidden"><div class="px-4 py-3 border-b border-white/10 font-serif font-bold text-lg">${esc(k)} <span class="font-sans text-xs text-acc">${g[k].length}</span></div><div class="px-4">${g[k].map(v=>row(v,pick)).join('')}</div></div>`).join('');
+}
+function vlist(pick){
+  const bl=S.lang==='all'?'es':S.lang;
+  return `<div class="rounded-xl bg-pan border border-white/10 p-4 mb-4"><div class="font-serif font-bold text-lg">${VS().length} voces ahora mismo</div>
+  <div class="text-sm text-zinc-400 mt-1">Son exactamente las que da el motor de voz activo de tu teléfono (Samsung o Google). Para ver las del otro motor, cámbialo en Paramètres › Synthèse vocale, vuelve aquí y toca Actualizar.</div>
+  <button data-a="refresh" class="mt-3 w-full h-11 rounded-lg bg-acc text-ink font-bold">Actualizar lista</button></div>
+  <input class="qin w-full h-11 rounded-lg bg-pan border border-white/10 px-3 mb-3" placeholder="Buscar voz por nombre" value="${esc(S.q)}">
+  <label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Texto de prueba</label>
+  <textarea class="basein w-full h-24 rounded-xl bg-pan border border-white/10 p-3 text-[15px] resize-none">${esc(S.base[bl])}</textarea>
+  <p class="text-xs text-zinc-500 mt-1 mb-4">Toca ▶ en cualquier voz para oírla. Las voces de otros idiomas leen una frase corta de ejemplo.</p>
+  <div class="vl" data-pick="${pick?1:0}">${vrows(pick)}</div>`;
+}
+const vname=w=>{const v=res(w);return v?esc(v.name):''};
+const castHtml=()=>names().map((w,i)=>{const v=res(w),sv=S.mapn[w]||S.want[w];
+  return `<div class="flex rounded-xl bg-pan border border-white/10 overflow-hidden"><i class="w-1.5 shrink-0" style="background:${HUES[i%8]}"></i>
+  <div class="flex-1 min-w-0 p-3"><div class="font-serif font-bold text-lg">${esc(w)}${w===NARR?' <span class="text-xs font-sans font-normal text-zinc-400">cuenta todo lo demás</span>':''}</div>
+  <div class="text-sm truncate ${v?'text-zinc-300':'text-acc'}">${v?esc(v.name)+' · '+esc(v.lang):sv?'No disponible con el motor actual: '+esc(sv):'Sin voz asignada'}</div></div>
+  <button data-a="pick" data-w="${esc(w)}" class="px-4 font-bold text-acc">${v?'Cambiar':'Elegir'}</button></div>`}).join('<div class="h-2"></div>');
+function chapters(){const out=[];parse(S.text).forEach((s,i)=>{if(s.h)out.push({i,t:s.t.replace(/\.$/,'')})});return out}
 const view={
  text:()=>`<textarea id="txt" class="w-full h-64 rounded-xl bg-pan border border-white/10 p-3 text-[15px] resize-y" placeholder="Pega aquí los capítulos ya marcados, varios a la vez.">${esc(S.text)}</textarea>
   <div class="grid grid-cols-2 gap-2 mt-2"><label class="h-11 grid place-items-center rounded-lg border border-white/10 font-bold cursor-pointer">Cargar .txt<input id="file" type="file" accept=".txt,text/plain" hidden></label>
@@ -192,120 +117,84 @@ const view={
   <pre class="mt-2 whitespace-pre-wrap text-xs text-zinc-300">## Capítulo 12: El puente
 Narración normal.
 [Luna: Ven conmigo.] dijo ella.
-@voz Luna = supertonic:F2
-@voz Narrador = piper:es_ES-davefx-medium</pre></details>
+@voz Luna = Jorge
+@voz Narrador = Mónica</pre><p class="mt-2">Lo que va entre corchetes con «Nombre:» lo dice ese personaje. Lo demás, el narrador. Las líneas @voz buscan la voz por parte del nombre entre las que tienes ahora.</p></details>
   <h2 class="font-serif font-bold text-xl mt-6 mb-2">Reparto</h2><div id="cast">${castHtml()}</div>`,
  voices:()=>vlist(false),
- gen:()=>{const c=parse(S.text).filter(s=>s.t).reduce((a,s)=>a+s.t.length,0),n=names().length-1;
+ read:()=>{const c=parse(S.text).filter(s=>s.t).reduce((a,s)=>a+s.t.length,0),n=names().length-1,ch=chapters();
   return `<div class="rounded-xl bg-pan border border-white/10 p-4"><div class="font-serif font-bold text-xl">${c.toLocaleString('es')} caracteres</div>
-  <div class="text-sm text-zinc-400">1 narrador y ${n} personaje${n===1?'':'s'}. Todos los capítulos pegados salen en un solo MP3.</div></div>
-  <div class="grid grid-cols-2 gap-2 mt-3"><button data-a="listen" ${S.busy?'disabled':''} class="h-12 rounded-lg bg-acc text-ink font-bold disabled:opacity-40">Escuchar ahora</button>
-  <button data-a="go" ${S.busy?'disabled':''} class="h-12 rounded-lg border border-acc text-acc font-bold disabled:opacity-40">Solo generar MP3</button>
-  <button data-a="cancel" ${S.busy?'':'disabled'} class="col-span-2 h-11 rounded-lg border border-white/10 font-bold disabled:opacity-40">Detener</button></div>
-  <p class="text-xs text-zinc-500 mt-2">«Escuchar ahora» empieza a sonar en cuanto está lista la primera parte y el MP3 se arma al mismo tiempo para descargarlo después.</p>
-  <div class="h-2.5 rounded-full bg-pan border border-white/10 mt-4 overflow-hidden"><i id="bar" class="block h-full bg-emerald-500" style="width:${S.pct}%"></i></div>
-  <div id="out" class="mt-4">${S.out?`<audio controls src="${S.out}" class="w-full"></audio><a href="${S.out}" download="novela.mp3" class="mt-3 h-12 grid place-items-center rounded-lg bg-acc text-ink font-bold">Descargar MP3</a>`:''}</div>`}
+  <div class="text-sm text-zinc-400">1 narrador y ${n} personaje${n===1?'':'s'}. Las voces del dispositivo se escuchan en vivo; no se guardan en archivo.</div></div>
+  ${ch.length?`<label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mt-4 mb-1">Empezar desde</label><select id="from" class="w-full h-11 rounded-lg bg-pan border border-white/10 px-3"><option value="0">El principio</option>${ch.map(x=>`<option value="${x.i}" ${S.from===x.i?'selected':''}>${esc(x.t)}</option>`).join('')}</select>`:''}
+  <label class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mt-4 mb-1">Velocidad <span id="rv" class="text-acc">${S.rate.toFixed(2)}×</span></label>
+  <input id="rate" type="range" min="0.6" max="1.6" step="0.05" value="${S.rate}" class="w-full">
+  <div class="grid grid-cols-3 gap-2 mt-4"><button data-a="listen" ${S.busy?'disabled':''} class="col-span-2 h-12 rounded-lg bg-acc text-ink font-bold disabled:opacity-40">Escuchar ahora</button>
+  <button data-a="cancel" ${S.busy?'':'disabled'} class="h-12 rounded-lg border border-white/10 font-bold disabled:opacity-40">Detener</button></div>
+  <div class="h-2.5 rounded-full bg-pan border border-white/10 mt-4 overflow-hidden"><i id="bar" class="block h-full bg-emerald-500" style="width:0%"></i></div>
+  <p class="text-xs text-zinc-500 mt-3">Mantén la pantalla encendida mientras escuchas: en Android, Chrome suele cortar la voz si se bloquea el teléfono.</p>`}
 };
-const TABS=[['text','Texto','M5 4h14v2H5zm0 5h14v2H5zm0 5h9v2H5z'],['voices','Voces','M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zm-6 9a6 6 0 0 0 12 0h-2a4 4 0 0 1-8 0zm5 7v2h2v-2z'],['gen','Audio','M12 3v12m0 0l-4-4m4 4l4-4M5 19h14']];
+const TABS=[['text','Texto','M5 4h14v2H5zm0 5h14v2H5zm0 5h9v2H5z'],['voices','Voces','M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zm-6 9a6 6 0 0 0 12 0h-2a4 4 0 0 1-8 0zm5 7v2h2v-2z'],['read','Escuchar','M8 5v14l11-7z']];
 function render(){
-  $('#lang').innerHTML=['es','fr'].map(l=>`<button data-a="lang" data-l="${l}" class="px-4 py-2 ${S.lang===l?'bg-acc text-ink':'text-zinc-300'}">${l==='es'?'Español':'Français'}</button>`).join('');
-  $('#nav').innerHTML=TABS.map(([id,t,d])=>`<button data-a="tab" data-t="${id}" class="py-3 flex flex-col items-center gap-1 text-xs font-bold ${S.tab===id?'text-acc':'text-zinc-400'}"><svg width="22" height="22" viewBox="0 0 24 24" fill="${id==='gen'?'none':'currentColor'}" stroke="${id==='gen'?'currentColor':'none'}" stroke-width="2"><path d="${d}"/></svg>${t}</button>`).join('');
+  $('#lang').innerHTML=[['es','Español'],['fr','Français'],['all','Todas']].map(([l,t])=>`<button data-a="lang" data-l="${l}" class="px-3 py-2 ${S.lang===l?'bg-acc text-ink':'text-zinc-300'}">${t}</button>`).join('');
+  $('#nav').innerHTML=TABS.map(([id,t,d])=>`<button data-a="tab" data-t="${id}" class="py-3 flex flex-col items-center gap-1 text-xs font-bold ${S.tab===id?'text-acc':'text-zinc-400'}"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="${d}"/></svg>${t}</button>`).join('');
   $('#view').innerHTML=view[S.tab]();
   const sh=$('#sheet');sh.classList.toggle('hidden',!S.sheet);
   if(S.sheet)sh.innerHTML=`<div class="sticky top-0 bg-ink border-b border-white/10 px-4 py-3 flex items-center justify-between" style="padding-top:calc(env(safe-area-inset-top) + .75rem)"><div class="font-serif font-bold text-xl">Voz para ${esc(S.sheet)}</div><button data-a="close" class="font-bold text-acc">Cerrar</button></div><div class="max-w-xl mx-auto p-4">${vlist(true)}</div>`;
 }
+const soft=()=>{if(S.tab==='voices'||S.sheet)render();else{const c=$('#cast');if(c)c.innerHTML=castHtml()}};
 
 /* ---------- eventos ---------- */
-document.addEventListener('click',async e=>{
+document.addEventListener('click',e=>{
   const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;
-  if(a==='play')play(b.dataset.k);
-  else if(a==='tab'){stopAudio();S.tab=b.dataset.t;render();scrollTo(0,0)}
-  else if(a==='lang'){stopAudio();S.lang=b.dataset.l;LS.set('lang',S.lang);render()}
+  if(a==='play')test(b.dataset.k);
+  else if(a==='tab'){stopAll();S.tab=b.dataset.t;render();scrollTo(0,0)}
+  else if(a==='lang'){stopAll();S.lang=b.dataset.l;LS.set('lang',S.lang);render()}
   else if(a==='pick'){S.sheet=b.dataset.w;render()}
-  else if(a==='close'){stopAudio();S.sheet=null;render()}
-  else if(a==='use'){S.map[S.sheet]=b.dataset.k;LS.set('map',S.map);stopAudio();S.sheet=null;render()}
+  else if(a==='close'){stopAll();S.sheet=null;render()}
+  else if(a==='use'){const v=byKey(b.dataset.k);S.map[S.sheet]=b.dataset.k;S.mapn[S.sheet]=v?v.name:'';LS.set('map',S.map);LS.set('mapn',S.mapn);stopAll();S.sheet=null;render()}
   else if(a==='clear'){S.text='';LS.set('text','');render()}
-  else if(a==='dlall')downloadAll();
-  else if(a==='go')generate(false);
-  else if(a==='listen')generate(true);
-  else if(a==='cancel'){S.stop=true;halt();try{speechSynthesis.cancel()}catch{}}
+  else if(a==='refresh'){stopAll();render();say(VS().length+' voces detectadas.')}
+  else if(a==='listen')listen();
+  else if(a==='cancel'){S.stop=true;stopAll()}
 });
 document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='txt'){S.text=t.value;LS.set('text',S.text);directives();$('#cast').innerHTML=castHtml()}
-  else if(t.classList.contains('basein')){S.base[S.lang]=t.value;LS.set('base',S.base)}
+  else if(t.classList.contains('basein')){S.base[S.lang==='all'?'es':S.lang]=t.value;LS.set('base',S.base)}
+  else if(t.classList.contains('qin')){S.q=t.value;document.querySelectorAll('.vl').forEach(el=>el.innerHTML=vrows(el.dataset.pick==='1'))}
+  else if(t.id==='rate'){S.rate=+t.value;LS.set('rate',S.rate);$('#rv').textContent=S.rate.toFixed(2)+'×'}
 });
-document.addEventListener('change',async e=>{if(e.target.id==='file'){const f=e.target.files[0];if(f){S.text=await f.text();LS.set('text',S.text);directives();render()}}});
+document.addEventListener('change',async e=>{
+  if(e.target.id==='file'){const f=e.target.files[0];if(f){S.text=await f.text();LS.set('text',S.text);directives();render()}}
+  else if(e.target.id==='from')S.from=+e.target.value;
+});
 
-/* ---------- generar MP3 ---------- */
-function pieces(text,max=280){
-  const ss=text.match(/[^.!?…]+[.!?…]+["»”)]*\s*|[^.!?…]+$/g)||[text],out=[];let cur='';
-  for(const s of ss){if((cur+s).length>max&&cur){out.push(cur);cur=''}cur+=s}
-  if(cur.trim())out.push(cur);return out;
-}
-async function downloadAll(){
-  if(S.dl)return;S.dl=true;S.dlDone=false;S.dlPct=0;S.dlTxt='Preparando…';render();
-  const up=(i,n,t)=>{S.dlPct=Math.round(i*100/n);S.dlTxt=t;const b=$('#dlbar');if(b)b.style.width=S.dlPct+'%';const x=$('#dltxt');if(x)x.textContent=t};
+/* ---------- lectura en vivo ---------- */
+async function listen(){
+  const segs=parse(S.text),who=names();
+  if(!segs.some(s=>s.t)){say('Pega primero el texto.',1);return}
+  const miss=who.filter(w=>!res(w));if(miss.length){say('Falta una voz disponible para: '+miss.join(', '),1);return}
+  const vo={};who.forEach(w=>vo[w]=res(w));
+  S.busy=true;S.stop=false;stopAll();render();
+  let wl;try{wl=await navigator.wakeLock.request('screen')}catch{}
   try{
-    await PR.piper.init();
-    const T=[...PR.piper.list(S.lang).map(v=>[v.name+' · Piper',()=>PR.piper.ensure(v.key.slice(6))])];
-    for(let i=0;i<T.length;i++){up(i,T.length,`${i+1}/${T.length} · ${T[i][0]}`);await T[i][1]()}
-    up(1,1,'Listo. Todas las voces están descargadas.');S.dlDone=true;say('');
-  }catch(e){say('Error al descargar: '+e.message,1);up(0,1,'Error: '+e.message)}
-  S.dl=false;render();
-}
-async function liveRead(segs){
-  S.busy=true;S.stop=false;S.out=null;render();
-  try{
-    const jobs=[];segs.forEach(s=>s.p?jobs.push(s):pieces(s.t).forEach(t=>jobs.push({w:s.w,t})));
+    const jobs=[];segs.slice(S.from<segs.length?S.from:0).forEach(s=>s.p?jobs.push(s):pieces(s.t).forEach(t=>jobs.push({w:s.w,t})));
     const tot=jobs.filter(j=>j.t).length;let n=0;
     for(const j of jobs){
       if(S.stop)break;
-      if(j.p){await new Promise(r=>setTimeout(r,j.p));continue}
-      say(`Leyendo ${++n} de ${tot} · ${j.w}`);const b=$('#bar');if(b)b.style.width=Math.round(n*100/tot)+'%';
-      await new Promise(r=>speakDev(S.map[j.w],j.t,r));
+      if(j.p){await new Promise(r=>setTimeout(r,j.p/S.rate));continue}
+      say(`Leyendo ${++n} de ${tot} · ${j.w}`);const bar=$('#bar');if(bar)bar.style.width=Math.round(n*100/tot)+'%';
+      await new Promise(r=>speak(vo[j.w],j.t,r));
     }
     say(S.stop?'Detenido.':'Fin de la lectura.');
-  }finally{S.busy=false;render()}
-}
-let sched=[],nextT=0;
-const halt=()=>{sched.forEach(s=>{try{s.stop()}catch{}});sched=[]};
-async function generate(listen){
-  const segs=parse(S.text),who=names();
-  if(!segs.some(s=>s.t)){say('Pega primero el texto.',1);return}
-  const miss=who.filter(w=>!S.map[w]);if(miss.length){say('Falta elegir voz para: '+miss.join(', '),1);return}
-  const dev=who.filter(w=>S.map[w].startsWith('device:')).length;
-  if(dev){if(dev<who.length){say('No mezcles voces del dispositivo con otras. Usa todas del dispositivo o ninguna.',1);return}
-    if(!listen){say('Las voces del dispositivo no se pueden guardar en MP3. Usa «Escuchar ahora».',1);return}
-    return liveRead(segs)}
-  S.busy=true;S.stop=false;S.out=null;S.pct=0;render();
-  if(listen){stopAudio();ac=ac||new AudioContext();ac.resume();halt();nextT=ac.currentTime+.3}
-  let wl;try{wl=await navigator.wakeLock.request('screen')}catch{}
-  try{
-    const enc=new lamejs.Mp3Encoder(1,RATE,64),mp3=[];
-    const push=p=>{for(let i=0;i<p.length;i+=1152){const r=enc.encodeBuffer(p.subarray(i,i+1152));if(r.length)mp3.push(new Uint8Array(r))}};
-    const mx=w=>PR[(S.map[w]||'').split(':')[0]]?.cloud?900:280;
-    const jobs=[];segs.forEach(s=>s.p?jobs.push({p:s.p}):pieces(s.t,mx(s.w)).forEach(t=>jobs.push({w:s.w,t})));
-    const total=jobs.filter(j=>j.t).length;let n=0;
-    for(const j of jobs){
-      if(S.stop)throw new Error('Cancelado');
-      if(j.p){push(new Int16Array(Math.round(RATE*j.p/1000)));if(listen)nextT+=j.p/1000;continue}
-      say(`Generando ${++n} de ${total} · ${j.w}`);S.pct=Math.round(n*100/total);const bar=$('#bar');if(bar)bar.style.width=S.pct+'%';
-      const f=await synth(S.map[j.w],S.lang,j.t),o=new Int16Array(f.length);
-      for(let i=0;i<f.length;i++){const v=Math.max(-1,Math.min(1,f[i]));o[i]=v<0?v*32768:v*32767}
-      push(o);push(new Int16Array(Math.round(RATE*.18)));
-      if(listen){const b=ac.createBuffer(1,f.length,RATE);b.copyToChannel(f,0);const s=ac.createBufferSource();s.buffer=b;s.connect(ac.destination);const t=Math.max(nextT,ac.currentTime+.05);s.start(t);nextT=t+b.duration+.18;sched.push(s)}
-    }
-    const fin=enc.flush();if(fin.length)mp3.push(new Uint8Array(fin));
-    S.out=URL.createObjectURL(new Blob(mp3,{type:'audio/mpeg'}));say('Listo. Descarga el archivo y escúchalo sin conexión.');
-  }catch(e){say(e.message==='Cancelado'?'Cancelado.':'Error: '+e.message,1)}
-  finally{S.busy=false;render();if(wl)wl.release().catch(()=>{})}
+  }finally{S.busy=false;if(wl)wl.release().catch(()=>{});render()}
 }
 
-render();
-directives();
-if(isEdge)PR.edge.init().then(()=>{(S.tab==='voices'||S.sheet)&&render()}).catch(e=>say('Voces de Edge: '+e.message,1));
-PR.piper.init().then(()=>{S.tab!=='gen'&&render()}).catch(e=>say('No se pudo cargar la lista de Piper: '+e.message,1));
+/* ---------- arranque ---------- */
+directives();render();
+try{speechSynthesis.onvoiceschanged=soft}catch{}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)soft()});
+addEventListener('focus',soft);
+let tries=0;const poll=setInterval(()=>{if(VS().length||++tries>20){clearInterval(poll);soft()}},300);
 </script>
 </body>
 </html>
